@@ -1,56 +1,72 @@
-# Welcome to your Expo app 👋
+# SAVE Project
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+This project includes:
 
-## Get started
+- Expo mobile app for Android/iOS
+- NestJS backend API
+- Next.js admin dashboard
+- MongoDB for primary data persistence
+- Redis for cache and queues
+- MinIO for object storage
+- Docker Compose for local services
 
-1. Install dependencies
+## Quick start
+
+1. Install root app dependencies:
 
    ```bash
    npm install
    ```
 
-2. Start the app
+2. Install backend dependencies:
 
    ```bash
-   npx expo start
+   cd backend && npm install
    ```
 
-In the output, you'll find options to open the app in a
+3. Install admin dashboard dependencies:
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+   ```bash
+   cd admin && npm install
+   ```
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
+4. Start local services:
 
-## Get a fresh project
+   ```bash
+   docker compose up -d
+   ```
 
-When you're ready, run:
+5. Start the backend:
 
-```bash
-npm run reset-project
-```
+   ```bash
+   cd backend && npm run start:dev
+   ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+6. Start the admin dashboard:
 
-### Other setup steps
+   ```bash
+   cd admin && npm run dev
+   ```
 
-- To set up ESLint for linting, run `npx expo lint`, or follow our guide on ["Using ESLint and Prettier"](https://docs.expo.dev/guides/using-eslint/)
-- If you'd like to set up unit testing, follow our guide on ["Unit Testing with Jest"](https://docs.expo.dev/develop/unit-testing/)
-- Learn more about the TypeScript setup in this template in our guide on ["Using TypeScript"](https://docs.expo.dev/guides/typescript/)
+7. Start the Expo app:
 
-## Learn more
+   ```bash
+   npm start
+   ```
 
-To learn more about developing your project with Expo, look at the following resources:
+## Environment files
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+- Copy `backend/.env.example` to `backend/.env` and update values as needed.
+- The Expo app can use environment variables as needed later for secure config.
+- The admin app can use its own local `.env.local` file for API URLs and secrets.
 
-## Join the community
+## Stack summary
 
-Join our community of developers creating universal apps.
-
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+- Mobile: React Native + Expo
+- Language: TypeScript
+- Navigation: Expo Router
+- State management: Zustand + TanStack Query
+- Local storage: SQLite + SecureStore + FileSystem + Camera
+- Backend: NestJS + MongoDB + Redis + BullMQ
+- Object storage: MinIO / S3-compatible storage
+- Web/admin: Next.js dashboard for operations and analytics
