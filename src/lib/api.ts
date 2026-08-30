@@ -33,6 +33,8 @@ export type ApiCategory = {
   color: string;
 };
 
+export type ApiSavingsGoalStatus = 'draft' | 'pending' | 'active' | 'completed' | 'withdrawn';
+
 export type ApiSavingsGoal = {
   id: string;
   name: string;
@@ -40,9 +42,11 @@ export type ApiSavingsGoal = {
   fundedAmount: number;
   targetDate?: string;
   asset: string;
-  status: 'draft';
-  transactionHash?: string;
+  status: ApiSavingsGoalStatus;
+  network?: string;
+  ownerAddress?: string;
   contractId?: string;
+  transactionHash?: string;
 };
 
 export function getApiBaseUrl(): string {
@@ -156,8 +160,23 @@ export async function fetchSavingsGoals(): Promise<ApiSavingsGoal[]> {
   return response.json() as Promise<ApiSavingsGoal[]>;
 }
 
-export function createSavingsGoal(payload: Pick<ApiSavingsGoal, 'name' | 'targetAmount' | 'targetDate' | 'asset'>) {
+export async function fetchSavingsGoal(id: string): Promise<ApiSavingsGoal> {
+  const url = `${getApiBaseUrl()}/savings-goals/${id}`;
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`Unable to load savings goal ${id} from ${url}`);
+  return response.json() as Promise<ApiSavingsGoal>;
+}
+
+export function createSavingsGoal(payload: Partial<Omit<ApiSavingsGoal, 'id'>> & Pick<ApiSavingsGoal, 'name' | 'targetAmount'>) {
   return postJson<ApiSavingsGoal>('/savings-goals', payload);
+}
+
+export function updateSavingsGoal(id: string, payload: Partial<Omit<ApiSavingsGoal, 'id'>>) {
+  return mutateJson<ApiSavingsGoal>(`/savings-goals/${id}`, 'PATCH', payload);
+}
+
+export function deleteSavingsGoal(id: string) {
+  return mutateJson<{ deleted: boolean }>(`/savings-goals/${id}`, 'DELETE');
 }
 
 export async function createTransaction(payload: Omit<ApiTransaction, 'id'>): Promise<ApiTransaction> {

@@ -1,22 +1,363 @@
-import { useEffect, useState } from 'react';
-import { Pressable, Text, TextInput, View } from 'react-native';
+import { useCallback, useEffect, useState } from 'react';
+import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { FinancePage, financePageStyles as styles } from '@/components/layout/finance-page';
-import { createSavingsGoal, fetchSavingsGoals, type ApiSavingsGoal } from '@/lib/api';
+import {
+  createSavingsGoal,
+  deleteSavingsGoal,
+  fetchSavingsGoals,
+  type ApiSavingsGoal,
+} from '@/lib/api';
 
 export default function SavingsScreen() {
   const [goals, setGoals] = useState<ApiSavingsGoal[]>([]);
-  const [form, setForm] = useState({ name: '', targetAmount: '', targetDate: '' });
+  const [loading, setLoading] = useState(true);
+  const [form, setForm] = useState({
+    name: '',
+    targetAmount: '',
+    targetDate: '',
+    asset: 'XLM',
+  });
   const [message, setMessage] = useState<string | null>(null);
-  useEffect(() => { void fetchSavingsGoals().then(setGoals).catch(() => setMessage('Savings API unavailable.')); }, []);
+
+  const loadGoals = useCallback(async () => {
+    try {
+      setLoading(true);
+      const items = await fetchSavingsGoals();
+      setGoals(items);
+      setMessage(null);
+    } catch {
+      setMessage('Savings API unavailable.');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadGoals();
+  }, [loadGoals]);
+
   const create = async () => {
     const targetAmount = Number(form.targetAmount);
-    if (!form.name.trim() || !Number.isFinite(targetAmount) || targetAmount <= 0) return setMessage('Enter a goal name and valid target.');
-    try { const goal = await createSavingsGoal({ name: form.name.trim(), targetAmount, targetDate: form.targetDate || undefined, asset: 'XLM' }); setGoals((items) => [goal, ...items]); setForm({ name: '', targetAmount: '', targetDate: '' }); setMessage(null); }
-    catch { setMessage('Savings API unavailable.'); }
+    if (!form.name.trim() || !Number.isFinite(targetAmount) || targetAmount <= 0) {
+      return setMessage('Enter a valid goal name and positive target amount.');
+    }
+
+    try {
+      const goal = await createSavingsGoal({
+        name: form.name.trim(),
+        targetAmount,
+        targetDate: form.targetDate || undefined,
+        asset: form.asset,
+        status: 'draft',
+        network: 'testnet',
+      });
+      setGoals((items) => [goal, ...items]);
+      setForm({ name: '', targetAmount: '', targetDate: '', asset: 'XLM' });
+      setMessage(null);
+    } catch {
+      setMessage('Failed to create savings goal. API unavailable.');
+    }
   };
-  return <FinancePage title="Savings Goals" subtitle="Off-chain drafts prepared for Stellar testnet">
-    <View style={styles.card}>{goals.map((goal) => <View key={goal.id} style={styles.row}><View style={styles.rowTop}><Text style={styles.rowTitle}>{goal.name}</Text><Text style={styles.rowValue}>{goal.fundedAmount} / {goal.targetAmount} {goal.asset}</Text></View><Text style={styles.rowMeta}>{goal.status} · {goal.targetDate || 'No target date'} · awaiting Soroban deployment</Text></View>)}{!goals.length ? <><Text style={styles.emptyTitle}>No savings goals yet</Text><Text style={styles.emptyText}>Create an off-chain draft below. Funding remains unavailable until the verified Soroban integration is complete.</Text></> : null}</View>
-    <View style={styles.card}><Text style={styles.cardTitle}>Create goal draft</Text>{[['Goal name', 'name'], ['Target amount in XLM', 'targetAmount'], ['Target date (YYYY-MM-DD)', 'targetDate']].map(([placeholder, key]) => <TextInput key={key} style={{ backgroundColor: '#081120', color: '#f4f7fb', borderRadius: 9, padding: 12, marginBottom: 9 }} placeholder={placeholder} placeholderTextColor="#65738c" keyboardType={key === 'targetAmount' ? 'decimal-pad' : 'default'} value={form[key as keyof typeof form]} onChangeText={(value) => setForm((current) => ({ ...current, [key]: value }))} />)}{message ? <Text style={[styles.rowMeta, { color: '#ff8b9c' }]}>{message}</Text> : null}<Pressable style={styles.primaryButton} onPress={create}><Text style={styles.primaryButtonText}>Save goal draft</Text></Pressable></View>
-  </FinancePage>;
+
+  const removeGoal = (id: string, name: string) => {
+    Alert.alert('Delete savings goal?', `Are you sure you want to delete "${name}"?`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await deleteSavingsGoal(id);
+            setGoals((prev) => prev.filter((g) => g.id !== id));
+          } catch {
+            Alert.alert('Error', 'Failed to delete goal.');
+          }
+        },
+      },
+    ]);
+  };
+
+  return (
+    <FinancePage
+      title="Savings Goals"
+      subtitle="Smart contracts and off-chain vaults on Stellar testnet">
+      <View style={styles.card}>
+        <View style={localStyles.headerRow}>
+          <Text style={styles.cardTitle}>Active Goals ({goals.length})</Text>
+          <Pressable onPress={loadGoals} style={localStyles.refreshButton}>
+            <Text style={localStyles.refreshText}>{loading ? 'Refreshing…' : '↻ Refresh'}</Text>
+          </Pressable>
+        </View>
+
+        {goals.map((goal) => {
+          const percent = Math.min(
+            Math.round(((goal.fundedAmount || 0) / Math.max(goal.targetAmount, 1)) * 100),
+            100,
+          );
+
+          return (
+            <View key={goal.id} style={localStyles.goalCard}>
+              <View style={styles.rowTop}>
+                <View style={localStyles.goalTitleWrap}>
+                  <Text style={styles.rowTitle}>{goal.name}</Text>
+                  <View style={localStyles.badgeRow}>
+                    <View style={localStyles.statusBadge}>
+                      <Text style={localStyles.statusBadgeText}>{goal.status.toUpperCase()}</Text>
+                    </View>
+                    <View style={localStyles.assetBadge}>
+                      <Text style={localStyles.assetBadgeText}>{goal.asset}</Text>
+                    </View>
+                  </View>
+                </View>
+                <Pressable
+                  onPress={() => removeGoal(goal.id, goal.name)}
+                  hitSlop={8}
+                  style={localStyles.deleteButton}>
+                  <Text style={localStyles.deleteButtonText}>✕</Text>
+                </Pressable>
+              </View>
+
+              <View style={localStyles.amountRow}>
+                <Text style={localStyles.fundedText}>
+                  {goal.fundedAmount.toLocaleString('en-US')} / {goal.targetAmount.toLocaleString('en-US')} {goal.asset}
+                </Text>
+                <Text style={localStyles.percentText}>{percent}% funded</Text>
+              </View>
+
+              <View style={localStyles.progressTrack}>
+                <View style={[localStyles.progressFill, { width: `${percent}%` }]} />
+              </View>
+
+              <View style={localStyles.metaRow}>
+                <Text style={styles.rowMeta}>
+                  {goal.targetDate ? `Target: ${goal.targetDate}` : 'No deadline'} · Stellar {goal.network ?? 'testnet'}
+                </Text>
+                {goal.contractId ? (
+                  <Text numberOfLines={1} style={localStyles.contractText}>
+                    Vault: {goal.contractId.slice(0, 8)}...
+                  </Text>
+                ) : (
+                  <Text style={localStyles.draftNote}>Off-chain draft</Text>
+                )}
+              </View>
+            </View>
+          );
+        })}
+
+        {!goals.length && !loading ? (
+          <View style={{ paddingVertical: 12 }}>
+            <Text style={styles.emptyTitle}>No savings goals yet</Text>
+            <Text style={styles.emptyText}>
+              Create your first savings goal below to track target funds on the Stellar network.
+            </Text>
+          </View>
+        ) : null}
+      </View>
+
+      <View style={styles.card}>
+        <Text style={styles.cardTitle}>Create New Goal</Text>
+        <TextInput
+          style={localStyles.input}
+          placeholder="Goal name (e.g., Emergency Fund)"
+          placeholderTextColor="#65738c"
+          value={form.name}
+          onChangeText={(value) => setForm((c) => ({ ...c, name: value }))}
+        />
+
+        <View style={localStyles.formRow}>
+          <TextInput
+            style={[localStyles.input, { flex: 1 }]}
+            placeholder="Target amount"
+            placeholderTextColor="#65738c"
+            keyboardType="decimal-pad"
+            value={form.targetAmount}
+            onChangeText={(value) => setForm((c) => ({ ...c, targetAmount: value }))}
+          />
+          <View style={localStyles.assetPicker}>
+            {['XLM', 'USDC'].map((asset) => (
+              <Pressable
+                key={asset}
+                onPress={() => setForm((c) => ({ ...c, asset }))}
+                style={[
+                  localStyles.assetChoice,
+                  form.asset === asset && localStyles.assetChoiceActive,
+                ]}>
+                <Text
+                  style={[
+                    localStyles.assetChoiceText,
+                    form.asset === asset && localStyles.assetChoiceTextActive,
+                  ]}>
+                  {asset}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+        </View>
+
+        <TextInput
+          style={localStyles.input}
+          placeholder="Target date (YYYY-MM-DD, optional)"
+          placeholderTextColor="#65738c"
+          value={form.targetDate}
+          onChangeText={(value) => setForm((c) => ({ ...c, targetDate: value }))}
+        />
+
+        {message ? <Text style={[styles.rowMeta, { color: '#ff8b9c' }]}>{message}</Text> : null}
+
+        <Pressable style={styles.primaryButton} onPress={create}>
+          <Text style={styles.primaryButtonText}>Save Goal Draft</Text>
+        </Pressable>
+      </View>
+    </FinancePage>
+  );
 }
+
+const localStyles = StyleSheet.create({
+  headerRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  refreshButton: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    backgroundColor: '#17243b',
+  },
+  refreshText: {
+    color: '#55a6ff',
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  goalCard: {
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#17243b',
+    gap: 6,
+  },
+  goalTitleWrap: {
+    gap: 4,
+    flex: 1,
+  },
+  badgeRow: {
+    flexDirection: 'row',
+    gap: 6,
+    alignItems: 'center',
+  },
+  statusBadge: {
+    backgroundColor: '#1b2a44',
+    borderRadius: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  statusBadgeText: {
+    color: '#8bb9f8',
+    fontSize: 9,
+    fontWeight: '700',
+  },
+  assetBadge: {
+    backgroundColor: '#16312a',
+    borderRadius: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  assetBadgeText: {
+    color: '#34d399',
+    fontSize: 9,
+    fontWeight: '700',
+  },
+  deleteButton: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#261924',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  deleteButtonText: {
+    color: '#ff6b81',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  amountRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  fundedText: {
+    color: '#f4f7fb',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  percentText: {
+    color: '#7d8ba6',
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  progressTrack: {
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#17243b',
+    overflow: 'hidden',
+  },
+  progressFill: {
+    height: '100%',
+    backgroundColor: '#55a6ff',
+    borderRadius: 3,
+  },
+  metaRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  contractText: {
+    color: '#a78bfa',
+    fontSize: 10,
+    fontWeight: '600',
+  },
+  draftNote: {
+    color: '#65738c',
+    fontSize: 10,
+    fontStyle: 'italic',
+  },
+  input: {
+    backgroundColor: '#081120',
+    color: '#f4f7fb',
+    borderRadius: 9,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#17243b',
+  },
+  formRow: {
+    flexDirection: 'row',
+    gap: 8,
+    alignItems: 'center',
+  },
+  assetPicker: {
+    flexDirection: 'row',
+    backgroundColor: '#081120',
+    borderRadius: 9,
+    borderWidth: 1,
+    borderColor: '#17243b',
+    padding: 3,
+    gap: 4,
+  },
+  assetChoice: {
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    borderRadius: 6,
+  },
+  assetChoiceActive: {
+    backgroundColor: '#1c3458',
+  },
+  assetChoiceText: {
+    color: '#65738c',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  assetChoiceTextActive: {
+    color: '#55a6ff',
+  },
+});

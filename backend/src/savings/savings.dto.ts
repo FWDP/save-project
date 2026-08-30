@@ -1,8 +1,98 @@
-import { IsNumber, IsOptional, IsPositive, IsString } from 'class-validator';
+import {
+  IsEnum,
+  IsNotEmpty,
+  IsNumber,
+  IsOptional,
+  IsPositive,
+  IsString,
+  Min,
+} from 'class-validator';
+import { SavingsGoalStatus } from './savings-goal.schema';
 
 export class CreateSavingsGoalDto {
-  @IsString() name: string;
-  @IsNumber() @IsPositive() targetAmount: number;
-  @IsOptional() @IsString() targetDate?: string;
-  @IsOptional() @IsString() asset?: string;
+  @IsString()
+  @IsNotEmpty()
+  name: string;
+
+  @IsNumber()
+  @IsPositive()
+  targetAmount: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  fundedAmount?: number;
+
+  @IsOptional()
+  @IsString()
+  targetDate?: string;
+
+  @IsOptional()
+  @IsString()
+  asset?: string;
+
+  @IsOptional()
+  @IsEnum(['draft', 'pending', 'active', 'completed', 'withdrawn'])
+  status?: SavingsGoalStatus;
+
+  @IsOptional()
+  @IsString()
+  network?: string;
+
+  @IsOptional()
+  @IsString()
+  ownerAddress?: string;
+
+  @IsOptional()
+  @IsString()
+  contractId?: string;
+
+  @IsOptional()
+  @IsString()
+  transactionHash?: string;
+}
+
+export class UpdateSavingsGoalDto {
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  name?: string;
+
+  @IsOptional()
+  @IsNumber()
+  @IsPositive()
+  targetAmount?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  fundedAmount?: number;
+
+  @IsOptional()
+  @IsString()
+  targetDate?: string;
+
+  @IsOptional()
+  @IsString()
+  asset?: string;
+
+  @IsOptional()
+  @IsEnum(['draft', 'pending', 'active', 'completed', 'withdrawn'])
+  status?: SavingsGoalStatus;
+
+  @IsOptional()
+  @IsString()
+  network?: string;
+
+  @IsOptional()
+  @IsString()
+  ownerAddress?: string;
+
+  @IsOptional()
+  @IsString()
+  contractId?: string;
+
+  @IsOptional()
+  @IsString()
+  transactionHash?: string;
 }
