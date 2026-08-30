@@ -9,6 +9,8 @@ type AppSidebarProps = {
 const menuItems: Array<{ label: string; href: Href; icon: string }> = [
   { label: 'Dashboard', href: '/', icon: '⌘' },
   { label: 'Expenses', href: '/expenses', icon: '▧' },
+  { label: 'Budgets', href: '/budgets', icon: '◔' },
+  { label: 'Savings', href: '/savings', icon: '◈' },
   { label: 'Categories', href: '/categories', icon: '◇' },
   { label: 'Custom Fields', href: '/custom-fields', icon: '☷' },
   { label: 'Reports', href: '/reports', icon: '↗' },
@@ -33,7 +35,7 @@ export function AppSidebar({ visible, onClose }: AppSidebarProps) {
         <View style={[styles.drawer, { width: drawerWidth }]}>
           <View style={styles.brandRow}>
             <View style={styles.brandIcon}><Text style={styles.brandIconText}>▧</Text></View>
-            <Text style={styles.brandTitle}>Expense Tracker</Text>
+            <Text style={styles.brandTitle}>SAVE Finance</Text>
             <Pressable accessibilityLabel="Close navigation" style={styles.closeButton} onPress={onClose}>
               <Text style={styles.closeText}>×</Text>
             </Pressable>
