@@ -1,25 +1,25 @@
-import { DarkTheme, DefaultTheme, ThemeProvider } from 'expo-router';
+import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
-import { useEffect } from 'react';
 import { useColorScheme } from 'react-native';
 
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
-import AppTabs from '@/components/app-tabs';
-import { initializeDatabase } from '@/lib/sqlite';
+import { FinanceDataProvider } from '@/components/providers/finance-data-provider';
 
 SplashScreen.preventAutoHideAsync();
 
 export default function TabLayout() {
   const colorScheme = useColorScheme();
 
-  useEffect(() => {
-    initializeDatabase();
-  }, []);
-
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
       <AnimatedSplashOverlay />
-      <AppTabs />
+      <FinanceDataProvider>
+        <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: '#070d1a' } }}>
+          <Stack.Screen name="(tabs)" />
+          <Stack.Screen name="expense-add" />
+          <Stack.Screen name="receipt-camera" options={{ presentation: 'fullScreenModal' }} />
+        </Stack>
+      </FinanceDataProvider>
     </ThemeProvider>
   );
 }

@@ -3,7 +3,10 @@ import {
     IsEnum,
     IsNotEmpty,
     IsNumber,
+    IsObject,
     IsOptional,
+    IsBoolean,
+    IsArray,
     IsString,
     Min,
 } from 'class-validator';
@@ -34,6 +37,27 @@ export class CreateTransactionDto {
   @IsOptional()
   @IsEnum(['pending', 'approved', 'rejected'])
   status?: 'pending' | 'approved' | 'rejected';
+
+  @IsOptional()
+  @IsString()
+  merchant?: string;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  tags?: string[];
+
+  @IsOptional()
+  @IsBoolean()
+  recurring?: boolean;
+
+  @IsOptional()
+  @IsString()
+  receiptUri?: string;
+
+  @IsOptional()
+  @IsObject()
+  customFields?: Record<string, string>;
 }
 
 export class UpdateTransactionDto {
@@ -68,4 +92,25 @@ export class UpdateTransactionDto {
   @IsOptional()
   @IsEnum(['pending', 'approved', 'rejected'])
   status?: 'pending' | 'approved' | 'rejected';
+
+  @IsOptional()
+  @IsString()
+  merchant?: string;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  tags?: string[];
+
+  @IsOptional()
+  @IsBoolean()
+  recurring?: boolean;
+
+  @IsOptional()
+  @IsString()
+  receiptUri?: string;
+
+  @IsOptional()
+  @IsObject()
+  customFields?: Record<string, string>;
 }
