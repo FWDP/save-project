@@ -33,9 +33,13 @@ yarn-error.*
 # local env files
 .env*.local
 *.env
+/backend/.stellar_integrity_signer_secret
 
 # typescript
 *.tsbuildinfo
+
+# Rust / Soroban
+/contract/target/
 
 example
 

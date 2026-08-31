@@ -4,10 +4,17 @@
   "version": "1.0.0",
   "dependencies": {
     "@expo/ui": "~57.0.14",
+    "@react-native-async-storage/async-storage": "2.2.0",
+    "@react-native-community/netinfo": "12.0.1",
     "@tanstack/react-query": "^5.101.4",
+    "@walletconnect/react-native-compat": "^2.23.10",
+    "@walletconnect/sign-client": "^2.23.10",
     "expo": "~57.0.18",
+    "expo-application": "~57.0.2",
     "expo-camera": "~57.0.4",
+    "expo-clipboard": "~57.0.1",
     "expo-constants": "~57.0.12",
+    "expo-crypto": "~57.0.2",
     "expo-dev-client": "~57.0.16",
     "expo-device": "~57.0.1",
     "expo-file-system": "~57.0.4",
@@ -28,6 +35,7 @@
     "react-dom": "19.2.3",
     "react-native": "0.86.3",
     "react-native-gesture-handler": "~2.32.0",
+    "react-native-get-random-values": "~1.11.0",
     "react-native-reanimated": "4.5.1",
     "react-native-safe-area-context": "~5.7.0",
     "react-native-screens": "~4.26.0",
@@ -37,6 +45,8 @@
   },
   "devDependencies": {
     "@types/react": "~19.2.2",
+    "eslint": "^9.0.0",
+    "eslint-config-expo": "~57.0.2",
     "typescript": "~6.0.3"
   },
   "scripts": {
@@ -48,7 +58,9 @@
     "lint": "expo lint",
     "admin": "npm --prefix admin run dev",
     "admin:build": "npm --prefix admin run build",
-    "admin:start": "npm --prefix admin run start"
+    "admin:start": "npm --prefix admin run start",
+    "contract:test": "cargo +stable test --manifest-path contract/Cargo.toml --locked",
+    "contract:build": "stellar contract build --manifest-path contract/Cargo.toml --locked"
   },
   "resolutions": {
     "uuid": "11.1.1",

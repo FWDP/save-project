@@ -101,6 +101,7 @@ export function SaveDashboard({ budgets, transactions, totals, loading, syncMess
   const isWide = width >= 760;
   const month = useMemo(() => getDashboardMonth(transactions), [transactions]);
   const monthLabel = month.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+  const currentMonthStr = month.toISOString().slice(0, 7);
 
   const expenses = useMemo(
     () => transactions.filter((transaction) => transaction.type === 'expense'),
@@ -110,27 +111,50 @@ export function SaveDashboard({ budgets, transactions, totals, loading, syncMess
   const spendingByCategory = useMemo(() => {
     const values = new Map<string, number>();
     for (const transaction of expenses) {
-      values.set(transaction.category, (values.get(transaction.category) ?? 0) + transaction.amount);
+      if (transaction.date.startsWith(currentMonthStr)) {
+        values.set(transaction.category, (values.get(transaction.category) ?? 0) + transaction.amount);
+      }
     }
     return [...values.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5);
-  }, [expenses]);
+  }, [currentMonthStr, expenses]);
+
+  const categorySpentMap = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const transaction of expenses) {
+      if (transaction.date.startsWith(currentMonthStr)) {
+        map.set(transaction.category, (map.get(transaction.category) ?? 0) + transaction.amount);
+      }
+    }
+    return map;
+  }, [currentMonthStr, expenses]);
 
   const dailySpending = useMemo(() => {
     const values = new Map<string, number>();
     for (const transaction of expenses) {
-      values.set(transaction.date, (values.get(transaction.date) ?? 0) + transaction.amount);
+      if (transaction.date.startsWith(currentMonthStr)) {
+        values.set(transaction.date, (values.get(transaction.date) ?? 0) + transaction.amount);
+      }
     }
     return [...values.entries()].sort(([a], [b]) => a.localeCompare(b)).slice(-7);
-  }, [expenses]);
+  }, [currentMonthStr, expenses]);
 
   const topMerchants = useMemo(
-    () => [...expenses].sort((a, b) => b.amount - a.amount).slice(0, 5),
-    [expenses],
+    () =>
+      [...expenses]
+        .filter((t) => t.date.startsWith(currentMonthStr))
+        .sort((a, b) => b.amount - a.amount)
+        .slice(0, 5),
+    [currentMonthStr, expenses],
   );
 
   const spentDates = useMemo(
-    () => new Set(expenses.map((transaction) => Number(transaction.date.slice(-2)))),
-    [expenses],
+    () =>
+      new Set(
+        expenses
+          .filter((t) => t.date.startsWith(currentMonthStr))
+          .map((transaction) => Number(transaction.date.slice(-2))),
+      ),
+    [currentMonthStr, expenses],
   );
 
   const daysInMonth = new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate();
@@ -270,7 +294,9 @@ export function SaveDashboard({ budgets, transactions, totals, loading, syncMess
 
       <SectionCard title="Budget Progress">
         {budgets.map((budget, index) => {
-          const used = budget.spent;
+          const used = categorySpentMap.has(budget.category)
+            ? (categorySpentMap.get(budget.category) ?? 0)
+            : budget.spent;
           const percent = Math.min((used / budget.limit) * 100, 100);
           const color = categoryColors[index % categoryColors.length];
           return (
