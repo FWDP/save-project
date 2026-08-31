@@ -3,7 +3,7 @@ import { Document } from 'mongoose';
 
 export type SavingsGoalDocument = SavingsGoal & Document;
 
-export type SavingsGoalStatus = 'draft' | 'pending' | 'active' | 'completed' | 'withdrawn';
+export type SavingsGoalStatus = 'draft' | 'pending' | 'active' | 'completed' | 'withdrawn' | 'cancelled';
 
 @Schema({ timestamps: true })
 export class SavingsGoal {
@@ -24,7 +24,7 @@ export class SavingsGoal {
 
   @Prop({
     required: true,
-    enum: ['draft', 'pending', 'active', 'completed', 'withdrawn'],
+    enum: ['draft', 'pending', 'active', 'completed', 'withdrawn', 'cancelled'],
     default: 'draft',
   })
   status: SavingsGoalStatus;
@@ -37,6 +37,9 @@ export class SavingsGoal {
 
   @Prop({ trim: true })
   contractId?: string;
+
+  @Prop({ trim: true })
+  vaultGoalId?: string;
 
   @Prop({ trim: true })
   transactionHash?: string;

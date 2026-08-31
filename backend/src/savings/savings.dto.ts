@@ -5,6 +5,7 @@ import {
   IsOptional,
   IsPositive,
   IsString,
+  Matches,
   Min,
 } from 'class-validator';
 import { SavingsGoalStatus } from './savings-goal.schema';
@@ -32,7 +33,7 @@ export class CreateSavingsGoalDto {
   asset?: string;
 
   @IsOptional()
-  @IsEnum(['draft', 'pending', 'active', 'completed', 'withdrawn'])
+  @IsEnum(['draft', 'pending', 'active', 'completed', 'withdrawn', 'cancelled'])
   status?: SavingsGoalStatus;
 
   @IsOptional()
@@ -46,6 +47,11 @@ export class CreateSavingsGoalDto {
   @IsOptional()
   @IsString()
   contractId?: string;
+
+  @IsOptional()
+  @IsString()
+  @Matches(/^\d+$/)
+  vaultGoalId?: string;
 
   @IsOptional()
   @IsString()
@@ -77,7 +83,7 @@ export class UpdateSavingsGoalDto {
   asset?: string;
 
   @IsOptional()
-  @IsEnum(['draft', 'pending', 'active', 'completed', 'withdrawn'])
+  @IsEnum(['draft', 'pending', 'active', 'completed', 'withdrawn', 'cancelled'])
   status?: SavingsGoalStatus;
 
   @IsOptional()
@@ -91,6 +97,11 @@ export class UpdateSavingsGoalDto {
   @IsOptional()
   @IsString()
   contractId?: string;
+
+  @IsOptional()
+  @IsString()
+  @Matches(/^\d+$/)
+  vaultGoalId?: string;
 
   @IsOptional()
   @IsString()

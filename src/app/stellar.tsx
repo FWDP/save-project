@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import * as Clipboard from 'expo-clipboard';
+import { useLocalSearchParams } from 'expo-router';
 import { Alert, AppState, Linking, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { FinancePage } from '@/components/layout/finance-page';
 import {
-  fetchStellarNetwork, fetchStellarPayments, fetchStellarSigningRequest, fetchVaultGoals,
+  fetchSavingsGoal, fetchStellarNetwork, fetchStellarPayments, fetchStellarSigningRequest, fetchVaultGoals,
   linkStellarAccount, prepareVaultInvocation, submitStellarTransaction, type StellarNetworkStatus, type StellarPortfolio,
   type StellarSigningRequest, type StellarVaultEvent, type StellarVaultGoal, type StellarVaultGoalsResponse,
 } from '@/lib/api';
@@ -21,6 +22,7 @@ import {
 const ACCOUNT_KEY = 'save.stellar.testnet.account';
 const STROOPS_PER_XLM = 10_000_000n;
 const newIdempotencyKey = (action: string) => `${action}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+const routeValue = (value: string | string[] | undefined) => Array.isArray(value) ? value[0] : value;
 
 const saveAccount = async (address: string) => {
   if (Platform.OS === 'web') { if (typeof window !== 'undefined') window.localStorage.setItem(ACCOUNT_KEY, address); return; }
@@ -61,13 +63,24 @@ const fundingStatusCopy = (status: StellarSigningRequest['status']) => {
 type VaultIntent = Omit<Parameters<typeof prepareVaultInvocation>[0], 'idempotencyKey'>;
 
 export default function StellarScreen() {
+  const route = useLocalSearchParams<{
+    savingsGoalId?: string;
+    goalName?: string;
+    targetAmount?: string;
+    targetDate?: string;
+    vaultGoalId?: string;
+  }>();
+  const savingsGoalId = routeValue(route.savingsGoalId);
+  const routedVaultGoalId = routeValue(route.vaultGoalId);
   const [network, setNetwork] = useState<StellarNetworkStatus | null>(null);
   const [portfolio, setPortfolio] = useState<StellarPortfolio | null>(null);
   const [vault, setVault] = useState<StellarVaultGoalsResponse | null>(null);
   const [payments, setPayments] = useState<Awaited<ReturnType<typeof fetchStellarPayments>>>([]);
   const [address, setAddress] = useState('');
-  const [targetXlm, setTargetXlm] = useState('1');
-  const [targetDate, setTargetDate] = useState('');
+  const [targetXlm, setTargetXlm] = useState(routeValue(route.targetAmount) ?? '1');
+  const [targetDate, setTargetDate] = useState(routeValue(route.targetDate) ?? '');
+  const [linkedGoalName, setLinkedGoalName] = useState(routeValue(route.goalName) ?? '');
+  const [focusedVaultGoalId, setFocusedVaultGoalId] = useState(routedVaultGoalId);
   const [contributions, setContributions] = useState<Record<string, string>>({});
   const [withdrawals, setWithdrawals] = useState<Record<string, string>>({});
   const [request, setRequest] = useState<StellarSigningRequest | null>(null);
@@ -78,6 +91,11 @@ export default function StellarScreen() {
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const walletConfig = useMemo(() => walletConnectConfiguration(), []);
+  const orderedVaultGoals = useMemo(() => {
+    const goals = vault?.goals ?? [];
+    if (!focusedVaultGoalId) return goals;
+    return [...goals].sort((left, right) => Number(right.id === focusedVaultGoalId) - Number(left.id === focusedVaultGoalId));
+  }, [focusedVaultGoalId, vault]);
 
   const loadVault = useCallback(async (owner: string) => { const result = await fetchVaultGoals(owner); setVault(result); return result; }, []);
   const connect = useCallback(async (nextAddress: string) => {
@@ -108,6 +126,7 @@ export default function StellarScreen() {
     try {
       const updated = await fetchStellarSigningRequest(request.idempotencyKey); setRequest(updated);
       if (updated.status === 'success' && portfolio) {
+        if (updated.goalId) setFocusedVaultGoalId(updated.goalId);
         const [linked, activity] = await Promise.all([linkStellarAccount(portfolio.address), fetchStellarPayments(portfolio.address), loadVault(portfolio.address)]);
         setPortfolio(linked); setPayments(activity); setMessage(`${updated.action.replaceAll('_', ' ')} confirmed on Stellar Testnet.`);
       }
@@ -124,6 +143,25 @@ export default function StellarScreen() {
       })
       .catch((error) => setMessage(error instanceof Error ? error.message : 'Unable to restore wallet session.'));
   }, [connect]);
+  useEffect(() => {
+    if (!savingsGoalId) return;
+    let active = true;
+    void fetchSavingsGoal(savingsGoalId)
+      .then((goal) => {
+        if (!active) return;
+        if (goal.asset !== 'XLM') throw new Error('The Stellar vault currently supports XLM savings goals only.');
+        setLinkedGoalName(goal.name);
+        setTargetXlm(String(goal.targetAmount));
+        setTargetDate(goal.targetDate ?? '');
+        if (goal.vaultGoalId && goal.status !== 'cancelled' && goal.status !== 'withdrawn') {
+          setFocusedVaultGoalId(goal.vaultGoalId);
+        }
+      })
+      .catch((error) => {
+        if (active) setMessage(error instanceof Error ? error.message : 'Unable to load the selected savings goal.');
+      });
+    return () => { active = false; };
+  }, [savingsGoalId]);
   useEffect(() => subscribeStellarWalletSession((reason) => {
     setWalletSession(null);
     setPairingUri(null);
@@ -239,20 +277,21 @@ export default function StellarScreen() {
     try {
       const deadline = targetDate.trim() ? Math.floor(new Date(`${targetDate.trim()}T23:59:59Z`).getTime() / 1000) : undefined;
       if (deadline !== undefined && (!Number.isFinite(deadline) || deadline <= Date.now() / 1000)) throw new Error('Target date must be a future YYYY-MM-DD date.');
-      await prepareIntent({ source: portfolio.address, owner: portfolio.address, action: 'create_goal', assetContractId: network.xlmSacId, targetAmount: xlmToAtomic(targetXlm), targetDate: deadline?.toString() });
+      await prepareIntent({ source: portfolio.address, owner: portfolio.address, action: 'create_goal', assetContractId: network.xlmSacId, targetAmount: xlmToAtomic(targetXlm), targetDate: deadline?.toString(), savingsGoalId });
     } catch (error) { setMessage(error instanceof Error ? error.message : 'Invalid goal details.'); }
   };
   const actOnGoal = async (goal: StellarVaultGoal, action: VaultIntent['action']) => {
     if (!portfolio) return;
     try {
       const amount = action === 'contribute' ? xlmToAtomic(contributions[goal.id] ?? '') : action === 'withdraw' ? xlmToAtomic(withdrawals[goal.id] ?? '') : undefined;
-      await prepareIntent({ source: portfolio.address, action, goalId: goal.id, contributor: action === 'contribute' ? portfolio.address : undefined, amount });
+      await prepareIntent({ source: portfolio.address, action, goalId: goal.id, savingsGoalId: goal.id === focusedVaultGoalId ? savingsGoalId : undefined, contributor: action === 'contribute' ? portfolio.address : undefined, amount });
     } catch (error) { setMessage(error instanceof Error ? error.message : 'Invalid transaction details.'); }
   };
   const xlmBalance = useMemo(() => portfolio?.balances.find((balance) => balance.asset === 'XLM')?.balance ?? '0', [portfolio]);
 
   return <FinancePage title="Stellar Savings" subtitle="Real Testnet funding with Soroban-verified goals">
     <View style={styles.notice}><Text style={styles.noticeTitle}>Non-custodial Testnet flow</Text><Text style={styles.help}>SAVE prepares transactions and tracks their public proof. Your external wallet remains the only user-transaction signer.</Text></View>
+    {savingsGoalId ? <View style={styles.selectedTracker}><Text style={styles.selectedTrackerLabel}>SELECTED SAVINGS GOAL</Text><Text style={styles.selectedTrackerTitle}>{linkedGoalName || 'Loading goal…'}</Text><Text style={styles.help}>{focusedVaultGoalId ? `Linked to Vault Goal #${focusedVaultGoalId}. Funding actions below apply to this exact goal.` : 'No active vault goal is linked yet. Create its dedicated on-chain goal below.'}</Text></View> : null}
     <View style={styles.card}>
       <View style={styles.row}><Text style={styles.title}>Network</Text><Text style={[styles.badge, network && styles.online]}>{network ? `LIVE · ledger ${network.latestLedger}` : 'UNAVAILABLE'}</Text></View>
       <Text style={styles.help}>Stellar Testnet · Protocol {network?.protocolVersion ?? '—'} · Asset: XLM</Text>
@@ -296,13 +335,13 @@ export default function StellarScreen() {
       {request.status === 'failed' && lastIntent ? <Pressable style={styles.primary} onPress={() => void prepareIntent(lastIntent)}><Text style={styles.primaryText}>Prepare Fresh Retry</Text></Pressable> : null}
     </View> : null}
     {portfolio ? <View style={styles.sectionHeader}><Text style={styles.sectionTitle}>Soroban goals</Text><Pressable onPress={() => void loadVault(portfolio.address)}><Text style={styles.link}>Refresh</Text></Pressable></View> : null}
-    {vault?.goals.map((goal) => {
+    {orderedVaultGoals.map((goal) => {
       const target = BigInt(goal.targetAmount || '0'); const balance = BigInt(goal.balance || '0');
       const progress = target > 0n ? Math.min(Number((balance * 10000n) / target) / 100, 100) : 0;
-      const goalEvents = vault.events.filter((item) => item.goalId === goal.id);
+      const goalEvents = (vault?.events ?? []).filter((item) => item.goalId === goal.id);
       const event = [...goalEvents].reverse().find((item) => item.successful);
       const contributionEvent = [...goalEvents].reverse().find((item) => item.successful && item.type.toLowerCase().includes('contribution'));
-      return <GoalCard key={goal.id} goal={goal} event={event} contributionEvent={contributionEvent} ledgerVerified={vault.ledgerVerified} progress={progress} contribution={contributions[goal.id] ?? ''} withdrawal={withdrawals[goal.id] ?? ''} busy={busy}
+      return <GoalCard key={goal.id} goal={goal} trackerName={goal.id === focusedVaultGoalId ? linkedGoalName : undefined} selected={goal.id === focusedVaultGoalId} event={event} contributionEvent={contributionEvent} ledgerVerified={Boolean(vault?.ledgerVerified)} progress={progress} contribution={contributions[goal.id] ?? ''} withdrawal={withdrawals[goal.id] ?? ''} busy={busy}
         onContributionChange={(value) => setContributions((current) => ({ ...current, [goal.id]: value }))}
         onWithdrawalChange={(value) => setWithdrawals((current) => ({ ...current, [goal.id]: value }))}
         onAction={(action) => void actOnGoal(goal, action)} />;
@@ -313,14 +352,14 @@ export default function StellarScreen() {
   </FinancePage>;
 }
 
-function GoalCard(props: { goal: StellarVaultGoal; event?: StellarVaultEvent; contributionEvent?: StellarVaultEvent; ledgerVerified: boolean; progress: number; contribution: string; withdrawal: string; busy: string | null; onContributionChange: (value: string) => void; onWithdrawalChange: (value: string) => void; onAction: (action: VaultIntent['action']) => void }) {
+function GoalCard(props: { goal: StellarVaultGoal; trackerName?: string; selected: boolean; event?: StellarVaultEvent; contributionEvent?: StellarVaultEvent; ledgerVerified: boolean; progress: number; contribution: string; withdrawal: string; busy: string | null; onContributionChange: (value: string) => void; onWithdrawalChange: (value: string) => void; onAction: (action: VaultIntent['action']) => void }) {
   const { goal, event, contributionEvent } = props;
   const balance = BigInt(goal.balance || '0');
   const target = BigInt(goal.targetAmount || '0');
   const fundingState = balance === 0n ? 'NOT FUNDED' : balance >= target ? 'TARGET REACHED' : 'PARTIALLY FUNDED';
   const lastContribution = eventField(contributionEvent, 'amount');
-  return <View style={styles.card}>
-    <View style={styles.row}><Text style={styles.title}>Goal #{goal.id}</Text><Text style={styles.status}>{goal.status}</Text></View>
+  return <View style={[styles.card, props.selected && styles.selectedGoalCard]}>
+    <View style={styles.row}><View><Text style={styles.title}>{props.trackerName || `Goal #${goal.id}`}</Text>{props.trackerName ? <Text style={styles.help}>Vault Goal #{goal.id} · selected tracker</Text> : null}</View><Text style={styles.status}>{goal.status}</Text></View>
     <View style={styles.verifiedBalance}>
       <View style={styles.row}><Text style={styles.verifiedLabel}>{props.ledgerVerified ? '✓ LIVE SOROBAN BALANCE' : 'BALANCE UNVERIFIED'}</Text><Text style={[styles.fundingBadge, balance > 0n && styles.fundingBadgeActive]}>{fundingState}</Text></View>
       <Text style={styles.balanceAmount}>{atomicToXlm(goal.balance)} XLM funded</Text>
@@ -340,6 +379,7 @@ const statusColor = (status: StellarSigningRequest['status']) => status === 'suc
 const confirmationBannerStyle = (status: StellarSigningRequest['status']) => status === 'success' ? styles.confirmationSuccess : status === 'failed' ? styles.confirmationFailed : status === 'prepared' ? styles.confirmationPrepared : styles.confirmationPending;
 const styles = StyleSheet.create({
   card: { backgroundColor: '#0d1629', borderWidth: 1, borderColor: '#1c2941', borderRadius: 12, padding: 15, gap: 11 }, failedCard: { borderColor: '#6d2c3a' }, confirmedCard: { borderColor: '#226a57' },
+  selectedGoalCard: { borderColor: '#5ca9ff', borderWidth: 2 }, selectedTracker: { backgroundColor: '#10233a', borderWidth: 1, borderColor: '#5ca9ff', borderRadius: 12, padding: 15, gap: 5 }, selectedTrackerLabel: { color: '#72b7ff', fontSize: 9, fontWeight: '900' }, selectedTrackerTitle: { color: '#f2f6fb', fontSize: 18, fontWeight: '900' },
   notice: { backgroundColor: '#10233a', borderWidth: 1, borderColor: '#275382', borderRadius: 12, padding: 15 }, noticeTitle: { color: '#72b7ff', fontWeight: '800', marginBottom: 6 },
   title: { color: '#f2f6fb', fontWeight: '800', fontSize: 14 }, sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 2 }, sectionTitle: { color: '#f2f6fb', fontWeight: '800', fontSize: 17 },
   help: { color: '#8d99ad', fontSize: 11, lineHeight: 17 }, row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 10 }, actionRow: { flexDirection: 'row', gap: 9 },

@@ -58,6 +58,11 @@ export class PrepareVaultInvocationDto {
 
   @IsOptional()
   @IsString()
+  @IsNotEmpty()
+  savingsGoalId?: string;
+
+  @IsOptional()
+  @IsString()
   @Matches(/^\d+$/)
   targetAmount?: string;
 

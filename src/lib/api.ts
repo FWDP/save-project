@@ -33,7 +33,7 @@ export type ApiCategory = {
   color: string;
 };
 
-export type ApiSavingsGoalStatus = 'draft' | 'pending' | 'active' | 'completed' | 'withdrawn';
+export type ApiSavingsGoalStatus = 'draft' | 'pending' | 'active' | 'completed' | 'withdrawn' | 'cancelled';
 
 export type ApiSavingsGoal = {
   id: string;
@@ -46,6 +46,7 @@ export type ApiSavingsGoal = {
   network?: string;
   ownerAddress?: string;
   contractId?: string;
+  vaultGoalId?: string;
   transactionHash?: string;
 };
 
@@ -89,6 +90,8 @@ export type StellarSigningRequest = {
   networkPassphrase: string;
   signingUrl: string;
   fee?: string;
+  savingsGoalId?: string;
+  goalId?: string;
   hash: string;
   source: string;
   error?: string;
@@ -314,6 +317,7 @@ export function prepareVaultInvocation(payload: {
   contributor?: string;
   assetContractId?: string;
   goalId?: string;
+  savingsGoalId?: string;
   targetAmount?: string;
   targetDate?: string;
   amount?: string;

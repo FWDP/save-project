@@ -22,6 +22,7 @@ import {
 import { LinkStellarAccountDto, PreparePaymentDto, PrepareVaultInvocationDto, StellarEventsQueryDto, SubmitStellarTransactionDto } from './stellar.dto';
 import { assertMatchingSignedTransaction, buildSep7SigningUrl, loadIntegritySigner, transactionHash } from './stellar.sep7';
 import { StellarAccount, StellarAccountDocument, StellarContractEvent, StellarContractEventDocument, StellarSigningRequest, StellarSigningRequestDocument } from './stellar.schema';
+import { SavingsService } from '../savings/savings.service';
 
 type SigningRequest = {
   idempotencyKey: string;
@@ -32,6 +33,8 @@ type SigningRequest = {
   status: 'prepared' | 'submitted' | 'pending' | 'success' | 'failed';
   hash: string;
   fee?: string;
+  savingsGoalId?: string;
+  goalId?: string;
   error?: string;
   createdAt: string;
 };
@@ -53,7 +56,7 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
   private readonly networkPassphrase: string;
   private readonly vaultContractId?: string;
   private readonly xlmSacId: string;
-  private readonly maxSorobanFee: number;
+  private readonly maxSorobanFee: bigint;
   private readonly callbackBaseUrl?: string;
   private readonly originDomain?: string;
   private readonly integritySigner?: Keypair;
@@ -70,13 +73,18 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
     @InjectModel(StellarAccount.name) private readonly accountModel: Model<StellarAccountDocument>,
     @InjectModel(StellarSigningRequest.name) private readonly signingRequestModel: Model<StellarSigningRequestDocument>,
     @InjectModel(StellarContractEvent.name) private readonly eventModel: Model<StellarContractEventDocument>,
+    private readonly savingsService: SavingsService,
   ) {
     this.horizonUrl = config.get('STELLAR_HORIZON_URL') ?? 'https://horizon-testnet.stellar.org';
     this.rpcUrl = config.get('STELLAR_RPC_URL') ?? 'https://soroban-testnet.stellar.org';
     this.networkPassphrase = config.get('STELLAR_NETWORK_PASSPHRASE') ?? Networks.TESTNET;
     this.vaultContractId = config.get('STELLAR_VAULT_CONTRACT_ID');
     this.xlmSacId = config.get('STELLAR_XLM_SAC_ID') ?? Asset.native().contractId(this.networkPassphrase);
-    this.maxSorobanFee = Number(config.get('STELLAR_MAX_SOROBAN_FEE') ?? 2_000_000);
+    const configuredMaxSorobanFee = String(config.get('STELLAR_MAX_SOROBAN_FEE') ?? '1000000000').trim();
+    if (!/^\d+$/.test(configuredMaxSorobanFee) || BigInt(configuredMaxSorobanFee) <= 0n) {
+      throw new Error('STELLAR_MAX_SOROBAN_FEE must be a positive integer in stroops');
+    }
+    this.maxSorobanFee = BigInt(configuredMaxSorobanFee);
     this.eventPollMs = Math.max(Number(config.get('STELLAR_EVENT_POLL_MS') ?? 15_000), 5_000);
     this.callbackBaseUrl = config.get<string>('STELLAR_CALLBACK_BASE_URL')?.replace(/\/+$/, '');
     this.originDomain = config.get<string>('STELLAR_ORIGIN_DOMAIN')?.trim() || undefined;
@@ -212,8 +220,21 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
       const operation = contract.call(dto.action, ...this.vaultArguments(dto));
       const raw = new TransactionBuilder(source, { fee: BASE_FEE, networkPassphrase: this.networkPassphrase }).addOperation(operation).setTimeout(180).build();
       const prepared = await this.rpc.prepareTransaction(raw);
-      if (Number(prepared.fee) > this.maxSorobanFee) throw new BadRequestException(`Simulated fee ${prepared.fee} exceeds configured bound ${this.maxSorobanFee}`);
-      return this.recordSigningRequest(dto.idempotencyKey, 'soroban', dto.action, dto.source, prepared.toXDR(), prepared.fee);
+      const simulatedFee = BigInt(prepared.fee);
+      if (simulatedFee > this.maxSorobanFee) {
+        throw new BadRequestException(
+          `Simulated fee ${prepared.fee} stroops exceeds configured maximum ${this.maxSorobanFee.toString()} stroops`,
+        );
+      }
+      return this.recordSigningRequest(
+        dto.idempotencyKey,
+        'soroban',
+        dto.action,
+        dto.source,
+        prepared.toXDR(),
+        prepared.fee,
+        { savingsGoalId: dto.savingsGoalId, goalId: dto.goalId },
+      );
     } catch (error) {
       if (error instanceof BadRequestException) throw error;
       throw new ServiceUnavailableException(`Unable to simulate vault invocation: ${error instanceof Error ? error.message : 'RPC error'}`);
@@ -357,6 +378,7 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
     source: string,
     unsignedXdr: string,
     fee = BASE_FEE,
+    linkedGoal: Pick<SigningRequest, 'savingsGoalId' | 'goalId'> = {},
   ) {
     const request: SigningRequest = {
       idempotencyKey,
@@ -367,6 +389,8 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
       status: 'prepared',
       hash: transactionHash(unsignedXdr, this.networkPassphrase),
       fee: String(fee),
+      savingsGoalId: linkedGoal.savingsGoalId,
+      goalId: linkedGoal.goalId,
       createdAt: new Date().toISOString(),
     };
     this.signingRequests.set(idempotencyKey, request);
@@ -409,6 +433,8 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
       status: persisted.status as SigningRequest['status'],
       hash: persisted.hash,
       fee: persisted.fee,
+      savingsGoalId: persisted.savingsGoalId,
+      goalId: persisted.goalId,
       error: persisted.error,
       createdAt: ((persisted as unknown as { createdAt?: Date }).createdAt ?? new Date()).toISOString(),
     };
@@ -425,7 +451,11 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
         request.error = result.successful ? undefined : 'Transaction failed on Stellar Testnet';
       } else {
         const result = await this.rpc.getTransaction(request.hash);
-        if (result.status === 'SUCCESS') { request.status = 'success'; request.error = undefined; }
+        if (result.status === 'SUCCESS') {
+          request.status = 'success';
+          request.error = undefined;
+          await this.syncLinkedSavingsGoal(request, result.returnValue);
+        }
         else if (result.status === 'FAILED') { request.status = 'failed'; request.error = 'Soroban transaction failed on Stellar Testnet'; }
         else if (result.status === 'NOT_FOUND' && Date.now() - Date.parse(request.createdAt) > 180_000) {
           request.status = 'failed'; request.error = 'Wallet approval expired. Prepare a fresh request and retry.';
@@ -438,7 +468,45 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
         request.status = 'failed'; request.error = 'Wallet approval expired. Prepare a fresh request and retry.';
       }
     }
-    await this.persistRequestUpdate(request.idempotencyKey, request.status, request.hash, request.error);
+    await this.persistRequestUpdate(request.idempotencyKey, request.status, request.hash, request.error, request.goalId);
+  }
+
+  private async syncLinkedSavingsGoal(request: SigningRequest, returnValue?: unknown) {
+    if (!request.savingsGoalId) return;
+    try {
+      if (request.action === 'create_goal' && returnValue) {
+        request.goalId = String(scValToNative(returnValue as Parameters<typeof scValToNative>[0]));
+      }
+      if (!request.goalId) return;
+
+      const response = await this.rpc.queryContract<Record<string, unknown>>(
+        this.requireVaultContract(),
+        'get_goal',
+        { goal_id: BigInt(request.goalId) },
+        this.networkPassphrase,
+      );
+      const goal = this.presentGoal(response.result);
+      const balance = Number(BigInt(goal.balance)) / 10_000_000;
+      const status = goal.status === 'Cancelled'
+        ? 'cancelled'
+        : goal.status === 'Completed' && BigInt(goal.balance) === 0n
+          ? 'withdrawn'
+          : goal.status === 'Completed'
+            ? 'completed'
+            : 'active';
+      await this.savingsService.update(request.savingsGoalId, {
+        fundedAmount: balance,
+        status,
+        network: 'testnet',
+        ownerAddress: goal.owner,
+        contractId: this.requireVaultContract(),
+        vaultGoalId: request.goalId,
+        transactionHash: request.hash,
+      });
+    } catch {
+      // The confirmed on-chain transaction remains authoritative. A later
+      // refresh can retry tracker reconciliation without affecting funds.
+    }
   }
 
   private assertAccount(address: string) {
@@ -450,10 +518,10 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
     return this.vaultContractId;
   }
 
-  private async persistRequestUpdate(idempotencyKey: string, status: SigningRequest['status'], hash: string, error?: string) {
+  private async persistRequestUpdate(idempotencyKey: string, status: SigningRequest['status'], hash: string, error?: string, goalId?: string) {
     await this.signingRequestModel.updateOne(
       { idempotencyKey },
-      { $set: { status, hash, error: error ?? null } },
+      { $set: { status, hash, error: error ?? null, ...(goalId ? { goalId } : {}) } },
     ).catch(() => undefined);
   }
 }

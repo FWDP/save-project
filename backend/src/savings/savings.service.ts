@@ -17,6 +17,7 @@ export type SavingsGoalResponse = {
   network?: string;
   ownerAddress?: string;
   contractId?: string;
+  vaultGoalId?: string;
   transactionHash?: string;
 };
 
@@ -32,6 +33,7 @@ function toSavingsGoalResponse(doc: any): SavingsGoalResponse {
     network: doc.network ?? 'testnet',
     ownerAddress: doc.ownerAddress,
     contractId: doc.contractId,
+    vaultGoalId: doc.vaultGoalId,
     transactionHash: doc.transactionHash,
   };
 }
@@ -104,6 +106,7 @@ export class SavingsService implements OnModuleInit {
         network: dto.network ?? 'testnet',
         ownerAddress: dto.ownerAddress,
         contractId: dto.contractId,
+        vaultGoalId: dto.vaultGoalId,
         transactionHash: dto.transactionHash,
       });
       const saved = await goal.save();
@@ -120,6 +123,7 @@ export class SavingsService implements OnModuleInit {
         network: dto.network ?? 'testnet',
         ownerAddress: dto.ownerAddress,
         contractId: dto.contractId,
+        vaultGoalId: dto.vaultGoalId,
         transactionHash: dto.transactionHash,
       };
       this.inMemoryGoals.unshift(fallback);

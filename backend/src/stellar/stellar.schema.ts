@@ -21,6 +21,8 @@ export class StellarSigningRequest {
   @Prop({ required: true, enum: ['prepared', 'submitted', 'pending', 'success', 'failed'], index: true }) status: string;
   @Prop({ index: true }) hash?: string;
   @Prop() fee?: string;
+  @Prop({ index: true }) savingsGoalId?: string;
+  @Prop() goalId?: string;
   @Prop() error?: string;
 }
 export type StellarSigningRequestDocument = HydratedDocument<StellarSigningRequest>;

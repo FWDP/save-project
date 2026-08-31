@@ -118,7 +118,19 @@ export default function SavingsScreen() {
             Math.round(((goal.fundedAmount || 0) / Math.max(goal.targetAmount, 1)) * 100),
             100,
           );
-          const hasOnChainProof = Boolean(goal.contractId && goal.transactionHash);
+          const hasOnChainGoal = Boolean(goal.contractId && goal.vaultGoalId);
+          const hasOnChainProof = Boolean(hasOnChainGoal && goal.transactionHash);
+          const canFundOnChain = hasOnChainGoal && goal.status !== 'cancelled' && goal.status !== 'withdrawn';
+          const openVaultGoal = () => router.push({
+            pathname: '/stellar',
+            params: {
+              savingsGoalId: goal.id,
+              goalName: goal.name,
+              targetAmount: String(goal.targetAmount),
+              targetDate: goal.targetDate,
+              vaultGoalId: canFundOnChain ? goal.vaultGoalId : undefined,
+            },
+          });
 
           return (
             <View key={goal.id} style={localStyles.goalCard}>
@@ -177,35 +189,29 @@ export default function SavingsScreen() {
                       ? localStyles.fundingVerifiedTitle
                       : localStyles.fundingDraftTitle
                   }>
-                  {hasOnChainProof ? '✓ Funding verified on Stellar' : 'Tracker only · no funds held'}
+                  {hasOnChainGoal ? '✓ Linked to a specific Stellar vault goal' : 'Tracker only · no funds held'}
                 </Text>
                 <Text style={localStyles.fundingStateText}>
-                  {hasOnChainProof
-                    ? 'This amount has an on-chain transaction proof.'
-                    : 'Saving this draft does not transfer XLM. Use the Stellar vault to fund a real goal.'}
+                  {hasOnChainGoal
+                    ? `Vault Goal #${goal.vaultGoalId} · ${goal.fundedAmount.toLocaleString('en-US')} ${goal.asset} verified on-chain.`
+                    : 'Saving this tracker does not transfer XLM. Create its dedicated Stellar vault goal first.'}
                 </Text>
               </View>
 
               <Pressable
-                style={hasOnChainProof ? localStyles.proofButton : localStyles.fundButton}
-                onPress={() => {
-                  if (hasOnChainProof && goal.transactionHash) {
-                    void Linking.openURL(
-                      `https://stellar.expert/explorer/testnet/tx/${goal.transactionHash}`,
-                    );
-                  } else {
-                    router.push('/stellar');
-                  }
-                }}>
-                <Text
-                  style={
-                    hasOnChainProof
-                      ? localStyles.proofButtonText
-                      : localStyles.fundButtonText
-                  }>
-                  {hasOnChainProof ? 'View Transaction Proof' : 'Open Stellar Vault to Fund'}
+                style={localStyles.fundButton}
+                onPress={openVaultGoal}>
+                <Text style={localStyles.fundButtonText}>
+                  {canFundOnChain ? `Fund Vault Goal #${goal.vaultGoalId}` : hasOnChainGoal ? 'Create Replacement Vault Goal' : 'Create Dedicated Vault Goal'}
                 </Text>
               </Pressable>
+              {hasOnChainProof && goal.transactionHash ? (
+                <Pressable
+                  style={localStyles.proofButton}
+                  onPress={() => void Linking.openURL(`https://stellar.expert/explorer/testnet/tx/${goal.transactionHash}`)}>
+                  <Text style={localStyles.proofButtonText}>View Latest Transaction Proof</Text>
+                </Pressable>
+              ) : null}
             </View>
           );
         })}
