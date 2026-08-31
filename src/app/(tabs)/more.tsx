@@ -8,7 +8,7 @@ export default function MoreScreen() {
   return (
     <FinancePage title="More" subtitle="Reports, profile, and application controls">
       <View style={styles.card}>
-        {[['Categories', '/categories'], ['Custom Fields', '/custom-fields'], ['Reports', '/reports'], ['Settings', '/settings']].map(([label, route]) => (
+        {[['Stellar Testnet', '/stellar'], ['Categories', '/categories'], ['Custom Fields', '/custom-fields'], ['Reports', '/reports'], ['Settings', '/settings']].map(([label, route]) => (
           <Pressable key={label} style={styles.row} onPress={() => router.push(route as '/reports')}>
             <View style={styles.rowTop}><Text style={styles.rowTitle}>{label}</Text><Text style={styles.rowValue}>›</Text></View>
           </Pressable>

@@ -6,7 +6,7 @@ type AppSidebarProps = {
   onClose: () => void;
 };
 
-const menuItems: Array<{ label: string; href: Href; icon: string }> = [
+const menuItems: { label: string; href: Href; icon: string }[] = [
   { label: 'Dashboard', href: '/', icon: '⌘' },
   { label: 'Expenses', href: '/expenses', icon: '▧' },
   { label: 'Budgets', href: '/budgets', icon: '◔' },

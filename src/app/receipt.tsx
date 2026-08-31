@@ -8,13 +8,6 @@ import { saveTransactions } from '@/lib/sqlite';
 import { useExpenseDraftStore } from '@/store/expense-draft-store';
 import { useFinanceStore } from '@/store/finance-store';
 
-const peso = new Intl.NumberFormat('en-PH', {
-  style: 'currency',
-  currency: 'PHP',
-  minimumFractionDigits: 2,
-  maximumFractionDigits: 2,
-});
-
 export default function ReceiptScreen() {
   const router = useRouter();
   const { transactions, setTransactions, categories } = useFinanceStore();

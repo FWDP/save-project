@@ -7,6 +7,7 @@ import { CategoriesModule } from './categories/categories.module';
 import { TransactionsModule } from './transactions/transactions.module';
 import { UsersModule } from './users/users.module';
 import { SavingsModule } from './savings/savings.module';
+import { StellarModule } from './stellar/stellar.module';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { SavingsModule } from './savings/savings.module';
     CategoriesModule,
     BudgetsModule,
     SavingsModule,
+    StellarModule,
   ],
   controllers: [],
   providers: [],

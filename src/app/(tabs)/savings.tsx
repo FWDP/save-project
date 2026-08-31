@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, Linking, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useRouter } from 'expo-router';
 
 import { FinancePage, financePageStyles as styles } from '@/components/layout/finance-page';
 import {
@@ -10,6 +11,7 @@ import {
 } from '@/lib/api';
 
 export default function SavingsScreen() {
+  const router = useRouter();
   const [goals, setGoals] = useState<ApiSavingsGoal[]>([]);
   const [loading, setLoading] = useState(true);
   const [form, setForm] = useState({
@@ -34,8 +36,25 @@ export default function SavingsScreen() {
   }, []);
 
   useEffect(() => {
-    void loadGoals();
-  }, [loadGoals]);
+    let active = true;
+
+    fetchSavingsGoals()
+      .then((items) => {
+        if (!active) return;
+        setGoals(items);
+        setMessage(null);
+      })
+      .catch(() => {
+        if (active) setMessage('Savings API unavailable.');
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const create = async () => {
     const targetAmount = Number(form.targetAmount);
@@ -82,6 +101,10 @@ export default function SavingsScreen() {
     <FinancePage
       title="Savings Goals"
       subtitle="Smart contracts and off-chain vaults on Stellar testnet">
+      <View style={localStyles.stellarBanner}>
+        <View style={{ flex: 1 }}><Text style={localStyles.stellarTitle}>Stellar Testnet vault</Text><Text style={styles.rowMeta}>Link a watch-only account and prepare externally signed Soroban transactions.</Text></View>
+        <Pressable style={localStyles.stellarButton} onPress={() => router.push('/stellar')}><Text style={localStyles.stellarButtonText}>Open</Text></Pressable>
+      </View>
       <View style={styles.card}>
         <View style={localStyles.headerRow}>
           <Text style={styles.cardTitle}>Active Goals ({goals.length})</Text>
@@ -95,6 +118,7 @@ export default function SavingsScreen() {
             Math.round(((goal.fundedAmount || 0) / Math.max(goal.targetAmount, 1)) * 100),
             100,
           );
+          const hasOnChainProof = Boolean(goal.contractId && goal.transactionHash);
 
           return (
             <View key={goal.id} style={localStyles.goalCard}>
@@ -141,6 +165,47 @@ export default function SavingsScreen() {
                   <Text style={localStyles.draftNote}>Off-chain draft</Text>
                 )}
               </View>
+
+              <View
+                style={[
+                  localStyles.fundingState,
+                  hasOnChainProof ? localStyles.fundingVerified : localStyles.fundingDraft,
+                ]}>
+                <Text
+                  style={
+                    hasOnChainProof
+                      ? localStyles.fundingVerifiedTitle
+                      : localStyles.fundingDraftTitle
+                  }>
+                  {hasOnChainProof ? '✓ Funding verified on Stellar' : 'Tracker only · no funds held'}
+                </Text>
+                <Text style={localStyles.fundingStateText}>
+                  {hasOnChainProof
+                    ? 'This amount has an on-chain transaction proof.'
+                    : 'Saving this draft does not transfer XLM. Use the Stellar vault to fund a real goal.'}
+                </Text>
+              </View>
+
+              <Pressable
+                style={hasOnChainProof ? localStyles.proofButton : localStyles.fundButton}
+                onPress={() => {
+                  if (hasOnChainProof && goal.transactionHash) {
+                    void Linking.openURL(
+                      `https://stellar.expert/explorer/testnet/tx/${goal.transactionHash}`,
+                    );
+                  } else {
+                    router.push('/stellar');
+                  }
+                }}>
+                <Text
+                  style={
+                    hasOnChainProof
+                      ? localStyles.proofButtonText
+                      : localStyles.fundButtonText
+                  }>
+                  {hasOnChainProof ? 'View Transaction Proof' : 'Open Stellar Vault to Fund'}
+                </Text>
+              </Pressable>
             </View>
           );
         })}
@@ -214,6 +279,10 @@ export default function SavingsScreen() {
 }
 
 const localStyles = StyleSheet.create({
+  stellarBanner: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: '#10233a', borderWidth: 1, borderColor: '#275382', borderRadius: 12, padding: 13 },
+  stellarTitle: { color: '#72b7ff', fontWeight: '800', fontSize: 13 },
+  stellarButton: { backgroundColor: '#5ca9ff', borderRadius: 8, paddingHorizontal: 14, paddingVertical: 10 },
+  stellarButtonText: { color: '#07111f', fontWeight: '800' },
   headerRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -321,6 +390,58 @@ const localStyles = StyleSheet.create({
     color: '#65738c',
     fontSize: 10,
     fontStyle: 'italic',
+  },
+  fundingState: {
+    borderRadius: 8,
+    borderWidth: 1,
+    padding: 9,
+    gap: 3,
+  },
+  fundingDraft: {
+    backgroundColor: '#171c29',
+    borderColor: '#343d50',
+  },
+  fundingVerified: {
+    backgroundColor: '#0d2925',
+    borderColor: '#226a57',
+  },
+  fundingDraftTitle: {
+    color: '#f0bd62',
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  fundingVerifiedTitle: {
+    color: '#38d695',
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  fundingStateText: {
+    color: '#8e9ab0',
+    fontSize: 10,
+    lineHeight: 15,
+  },
+  fundButton: {
+    backgroundColor: '#5ca9ff',
+    borderRadius: 8,
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  fundButtonText: {
+    color: '#07111f',
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  proofButton: {
+    borderWidth: 1,
+    borderColor: '#2d745f',
+    borderRadius: 8,
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  proofButtonText: {
+    color: '#43d79b',
+    fontSize: 11,
+    fontWeight: '800',
   },
   input: {
     backgroundColor: '#081120',
