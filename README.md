@@ -17,6 +17,35 @@ SAVE brings everyday money management, receipt capture, savings goals, and exter
 
 ---
 
+## 📱 SAVE on Mobile
+
+A tour of SAVE's mobile experience, from everyday money management to non-custodial Stellar Testnet savings. Screenshots show demo financial data from an Android development build.
+
+<table>
+  <tr>
+    <th>Financial dashboard</th>
+    <th>Expense tracking</th>
+  </tr>
+  <tr>
+    <td><img src="screenshots/01-dashboard.png" alt="SAVE financial dashboard with income, expenses, balance, and monthly spending insights" width="360" /></td>
+    <td><img src="screenshots/02-expenses.png" alt="SAVE expense list with search, date, and category filters" width="360" /></td>
+  </tr>
+  <tr>
+    <th>Budget progress</th>
+    <th>Savings goals</th>
+  </tr>
+  <tr>
+    <td><img src="screenshots/03-budgets.png" alt="SAVE category budgets with spending progress" width="360" /></td>
+    <td><img src="screenshots/04-savings.png" alt="SAVE savings goals with Stellar Testnet vault access" width="360" /></td>
+  </tr>
+  <tr>
+    <th colspan="2">Non-custodial Stellar savings</th>
+  </tr>
+  <tr>
+    <td colspan="2" align="center"><img src="screenshots/05-stellar.png" alt="SAVE Stellar Testnet savings screen with a connected Freighter Mobile signer" width="360" /></td>
+  </tr>
+</table>
+
 ## 🧩 Why SAVE
 
 Personal finances are often split across expense trackers, spreadsheets, receipt folders, bank apps, and crypto wallets. That fragmentation makes it difficult to connect daily spending decisions with longer-term savings goals.
