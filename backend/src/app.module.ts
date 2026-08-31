@@ -19,6 +19,10 @@ import { StellarModule } from './stellar/stellar.module';
       imports: [ConfigModule],
       useFactory: (config: ConfigService) => ({
         uri: config.get<string>('MONGODB_URI', 'mongodb://localhost:27017/save'),
+        // Stellar routes do not depend on MongoDB. Start the API even when the
+        // local database is temporarily offline so network and vault health
+        // checks remain available.
+        lazyConnection: true,
       }),
       inject: [ConfigService],
     }),

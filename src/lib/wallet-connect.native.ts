@@ -5,7 +5,7 @@ import type { SessionTypes } from '@walletconnect/types';
 
 const TESTNET_CHAIN = 'stellar:testnet';
 const REQUIRED_METHOD = 'stellar_signXDR';
-const FREIGHTER_DEEP_LINK = 'freighterwallet://wc?uri=';
+const FREIGHTER_DEEP_LINK = 'freighterwallet://wc-redirect?uri=';
 const DEFAULT_METADATA_URL = 'https://github.com/FWDP/save-project';
 const DEFAULT_METADATA_ICON = 'https://raw.githubusercontent.com/FWDP/save-project/main/assets/images/icon.png';
 
