@@ -80,6 +80,7 @@ pub struct GoalCancelled {
 #[contracttype]
 enum DataKey {
     Counter,
+    AllowedAsset,
     Goal(u128),
     OwnerGoals(Address),
 }
@@ -96,6 +97,7 @@ pub enum VaultError {
     CompletionConditionsNotMet = 6,
     InsufficientBalance = 7,
     ArithmeticOverflow = 8,
+    UnsupportedAsset = 9,
 }
 
 #[contract]
@@ -103,6 +105,21 @@ pub struct SavingsVault;
 
 #[contractimpl]
 impl SavingsVault {
+    pub fn __constructor(env: Env, allowed_asset: Address) {
+        env.storage()
+            .instance()
+            .set(&DataKey::AllowedAsset, &allowed_asset);
+        bump_instance(&env);
+    }
+
+    pub fn allowed_asset(env: Env) -> Address {
+        bump_instance(&env);
+        env.storage()
+            .instance()
+            .get(&DataKey::AllowedAsset)
+            .expect("allowed asset must be configured at deployment")
+    }
+
     pub fn create_goal(
         env: Env,
         owner: Address,
@@ -116,6 +133,9 @@ impl SavingsVault {
         }
         if target_date.is_some_and(|deadline| deadline <= env.ledger().timestamp()) {
             return Err(VaultError::InvalidTargetDate);
+        }
+        if asset != Self::allowed_asset(env.clone()) {
+            return Err(VaultError::UnsupportedAsset);
         }
 
         bump_instance(&env);

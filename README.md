@@ -4,13 +4,15 @@
 
 # SAVE Finance
 
+[![Verify SAVE](https://github.com/FWDP/save-project/actions/workflows/verify.yml/badge.svg)](https://github.com/FWDP/save-project/actions/workflows/verify.yml)
+
 ### Personal finance and goal-based saving, with optional Stellar rails
 
 Track spending. Plan budgets. Build savings on Stellar Testnet without giving up custody of your wallet.
 
 SAVE brings everyday money management, receipt capture, savings goals, and externally signed Stellar transactions into one mobile-first workspace. A NestJS API supports the app, while a Next.js dashboard provides an operational view.
 
-[Explore the repository](https://github.com/FWDP/save-project) · [Stellar architecture](docs/STELLAR_ARCHITECTURE.md) · [Savings vault contract](docs/CONTRACT.md) · [Test evidence](docs/DELIVERABLES_1_2_TEST_REPORT.md)
+[Explore the repository](https://github.com/FWDP/save-project) · [Reviewer runbook](docs/REVIEWER_RUNBOOK.md) · [Stellar architecture](docs/STELLAR_ARCHITECTURE.md) · [Verification evidence](docs/DELIVERABLE_4_EVIDENCE.md)
 
 > [!IMPORTANT]
 > SAVE's blockchain features are alpha software for **Stellar Testnet only**. The project does not support Mainnet or real-value custody. SAVE never asks for or stores a wallet secret seed; an external wallet must approve every transaction.
@@ -122,7 +124,7 @@ The browser or mobile client cannot declare a transaction successful. SAVE recon
 
 | Contract | Address | Explorer |
 | --- | --- | --- |
-| SAVE Savings Vault | `CALFEOYNTNJYB5HTUPYHHFHMNNYLYEBOCV43Z73J54G3CQNSH5VCNP7H` | [View on Stellar Expert](https://stellar.expert/explorer/testnet/contract/CALFEOYNTNJYB5HTUPYHHFHMNNYLYEBOCV43Z73J54G3CQNSH5VCNP7H) |
+| SAVE Savings Vault | `CDYPVKFWSPHKGDHZ77M2T2TZPCS3LVXDFJDH5PERL5HTUNVFYSTB7AG3` | [View on Stellar Expert](https://stellar.expert/explorer/testnet/contract/CDYPVKFWSPHKGDHZ77M2T2TZPCS3LVXDFJDH5PERL5HTUNVFYSTB7AG3) |
 | Native XLM SAC | `CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC` | [View on Stellar Expert](https://stellar.expert/explorer/testnet/contract/CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC) |
 
 These are public Testnet identifiers, not credentials. Deployments may be replaced as SAVE evolves; update the backend environment and contract documentation together after any redeployment.
@@ -142,10 +144,10 @@ These are public Testnet identifiers, not credentials. Deployments may be replac
 
 ### Prerequisites
 
-- Node.js LTS and npm.
+- Node.js 22.13+ and npm 10+ (`.nvmrc` pins the reviewer version).
 - Docker with Docker Compose.
 - Android Studio or Xcode for a native development build.
-- Rust and the Stellar CLI for contract development.
+- Rust/Cargo stable 1.90+ and Stellar CLI 27.x for contract development.
 - A funded Stellar Testnet account and Freighter Mobile for the complete signing flow.
 - A public WalletConnect project ID.
 
@@ -154,9 +156,9 @@ These are public Testnet identifiers, not credentials. Deployments may be replac
 From the repository root:
 
 ```bash
-npm install
-npm --prefix backend install
-npm --prefix admin install
+npm ci
+npm --prefix backend ci
+npm --prefix admin ci
 ```
 
 ### 2. Configure the environments
@@ -164,11 +166,18 @@ npm --prefix admin install
 ```bash
 cp .env.example .env
 cp backend/.env.example backend/.env
+cp admin/.env.example admin/.env.local
 ```
 
 Set `EXPO_PUBLIC_API_URL` to a backend URL reachable by the phone, such as `http://192.168.1.25:3000`. Add your public `EXPO_PUBLIC_WALLETCONNECT_PROJECT_ID`; values prefixed with `EXPO_PUBLIC_` are bundled into the client and must never contain secrets.
 
 Review the local MongoDB, Redis, MinIO, JWT, Stellar Testnet, callback, and contract settings in `backend/.env` before starting the API. The admin app can use `admin/.env.local` for its own API configuration.
+
+Validate the configuration and installed tool versions before continuing:
+
+```bash
+npm run env:validate
+```
 
 ### 3. Start local services
 
@@ -210,29 +219,25 @@ In the app, open **More → Stellar Testnet → Connect Freighter Mobile**. Use 
 
 ## 🧪 Test and Validate
 
-Run the application checks from the repository root:
+Run the complete local verification gate from the repository root:
 
 ```bash
-npm run lint
-npx tsc --noEmit
-npm --prefix backend test
-npm run admin:build
+npm run verify
 ```
 
-Run the Soroban contract suite and build its Wasm artifact:
+Verify the live Testnet services, deployed contract, and exact Wasm hash:
 
 ```bash
-npm run contract:test
-npm run contract:build
+npm run health:testnet
 ```
 
-The contract artifact is written to `contract/target/wasm32v1-none/release/save_savings_vault.wasm`. See the [test report](docs/DELIVERABLES_1_2_TEST_REPORT.md) for repeatable runtime checks and existing Testnet evidence.
+After starting the API and admin app, add `--services` to verify their connectivity. The contract artifact is written to `contract/target/wasm32v1-none/release/save_savings_vault.wasm`. See the [reviewer runbook](docs/REVIEWER_RUNBOOK.md) for the clean-checkout process and the [Deliverable 4 evidence package](docs/DELIVERABLE_4_EVIDENCE.md) for expected outputs.
 
 ## 🚢 Deploy the Savings Vault
 
 Contract deployment is an explicit operator action. Use a funded Stellar CLI identity—never put its secret key in a command, environment file, application, or repository.
 
-Read the [contract deployment guide](docs/CONTRACT.md) before deploying. It documents the build artifact, current Wasm hash, deployment command, configuration update, and pre-Mainnet security requirements.
+Read the [contract deployment guide](docs/CONTRACT.md) before deploying. It documents the build artifact, immutable Native XLM SAC constructor allowlist, current Wasm hash, deployment command, and configuration update.
 
 > [!CAUTION]
 > A working Testnet deployment is not evidence of Mainnet readiness. Independent review, stronger invariant testing, recovery procedures, key custody, asset allowlists, operational controls, and legal review are required before real-value use.
@@ -259,6 +264,8 @@ Read the [contract deployment guide](docs/CONTRACT.md) before deploying. It docu
 - [Stellar architecture](docs/STELLAR_ARCHITECTURE.md) — network decisions, trust boundaries, reconciliation, and non-goals.
 - [Savings vault contract](docs/CONTRACT.md) — interface, events, deployment, and security review.
 - [Deliverables 1–2 test report](docs/DELIVERABLES_1_2_TEST_REPORT.md) — acceptance evidence and repeatable verification.
+- [Deliverable 4 evidence](docs/DELIVERABLE_4_EVIDENCE.md) — CI matrix, deployed contract proof, health checks, and negative-path coverage.
+- [Independent reviewer runbook](docs/REVIEWER_RUNBOOK.md) — clean-checkout setup and end-to-end verification.
 - [Combined Stellar implementation](docs/COMBINED_SOROBAN_STELLAR_IMPLEMENTATION.md) — implementation context across the app, API, and contract.
 
 ## ⚠️ Alpha Boundaries

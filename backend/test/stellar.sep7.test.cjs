@@ -8,6 +8,7 @@ const {
   signSep7Uri,
   transactionHash,
 } = require('../dist/stellar/stellar.sep7');
+const { assertAllowedVaultAsset } = require('../dist/stellar/stellar.assets');
 
 function transaction(keypair, sequence, value) {
   return new TransactionBuilder(new Account(keypair.publicKey(), sequence), {
@@ -70,4 +71,25 @@ test('signs SEP-7 origin requests with the dedicated integrity key', () => {
 
   assert.equal(signSep7Uri(unsignedUri, integritySigner), signature.toString('base64'));
   assert.equal(integritySigner.verify(payload, signature), true);
+});
+
+test('binds the prepared transaction hash to the Stellar network passphrase', () => {
+  const signer = Keypair.random();
+  const prepared = transaction(signer, '1', 'testnet');
+  assert.notEqual(
+    transactionHash(prepared.toXDR(), Networks.TESTNET),
+    transactionHash(prepared.toXDR(), Networks.PUBLIC),
+  );
+});
+
+test('allows only the configured Native XLM SAC for vault creation', () => {
+  const nativeXlmSac = 'CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC';
+  const unsupportedSac = 'CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM';
+
+  assert.equal(assertAllowedVaultAsset(undefined, nativeXlmSac), nativeXlmSac);
+  assert.equal(assertAllowedVaultAsset(nativeXlmSac, nativeXlmSac), nativeXlmSac);
+  assert.throws(
+    () => assertAllowedVaultAsset(unsupportedSac, nativeXlmSac),
+    /Only the configured Native XLM SAC/,
+  );
 });

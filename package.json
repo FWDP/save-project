@@ -55,12 +55,19 @@
     "android": "expo run:android",
     "ios": "expo run:ios",
     "web": "expo start --web",
+    "typecheck": "tsc --noEmit",
+    "backend:lint": "eslint backend/src --ext .ts --max-warnings=0",
     "lint": "expo lint",
     "admin": "npm --prefix admin run dev",
     "admin:build": "npm --prefix admin run build",
+    "admin:lint": "npm --prefix admin run lint",
     "admin:start": "npm --prefix admin run start",
     "contract:test": "cargo +stable test --manifest-path contract/Cargo.toml --locked",
-    "contract:build": "stellar contract build --manifest-path contract/Cargo.toml --locked"
+    "contract:build": "stellar contract build --manifest-path contract/Cargo.toml --locked",
+    "contract:check": "cargo fmt --manifest-path contract/Cargo.toml --all -- --check && cargo clippy --manifest-path contract/Cargo.toml --all-targets --locked -- -D warnings && npm run contract:test && npm run contract:build",
+    "env:validate": "node scripts/validate-env.mjs",
+    "health:testnet": "node scripts/health-check.mjs",
+    "verify": "npm run env:validate && npm run lint && npm run typecheck && npm run backend:lint && npm --prefix backend test && npm run admin:lint && npm run admin:build && npm run contract:check"
   },
   "resolutions": {
     "uuid": "11.1.1",

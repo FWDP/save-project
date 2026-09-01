@@ -23,6 +23,7 @@ import { LinkStellarAccountDto, PreparePaymentDto, PrepareVaultInvocationDto, St
 import { assertMatchingSignedTransaction, buildSep7SigningUrl, loadIntegritySigner, transactionHash } from './stellar.sep7';
 import { StellarAccount, StellarAccountDocument, StellarContractEvent, StellarContractEventDocument, StellarSigningRequest, StellarSigningRequestDocument } from './stellar.schema';
 import { SavingsService } from '../savings/savings.service';
+import { assertAllowedVaultAsset } from './stellar.assets';
 
 type SigningRequest = {
   idempotencyKey: string;
@@ -56,6 +57,7 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
   private readonly networkPassphrase: string;
   private readonly vaultContractId?: string;
   private readonly xlmSacId: string;
+  private readonly expectedVaultWasmHash?: string;
   private readonly maxSorobanFee: bigint;
   private readonly callbackBaseUrl?: string;
   private readonly originDomain?: string;
@@ -80,6 +82,7 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
     this.networkPassphrase = config.get('STELLAR_NETWORK_PASSPHRASE') ?? Networks.TESTNET;
     this.vaultContractId = config.get('STELLAR_VAULT_CONTRACT_ID');
     this.xlmSacId = config.get('STELLAR_XLM_SAC_ID') ?? Asset.native().contractId(this.networkPassphrase);
+    this.expectedVaultWasmHash = config.get<string>('STELLAR_VAULT_WASM_HASH')?.trim().toLowerCase() || undefined;
     const configuredMaxSorobanFee = String(config.get('STELLAR_MAX_SOROBAN_FEE') ?? '1000000000').trim();
     if (!/^\d+$/.test(configuredMaxSorobanFee) || BigInt(configuredMaxSorobanFee) <= 0n) {
       throw new Error('STELLAR_MAX_SOROBAN_FEE must be a positive integer in stroops');
@@ -116,16 +119,41 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
 
   async networkHealth() {
     try {
-      const [network, ledger] = await Promise.all([this.rpc.getNetwork(), this.rpc.getLatestLedger()]);
+      const contractId = this.requireVaultContract();
+      const [network, ledger, horizonLedger, instance, allowedAsset] = await Promise.all([
+        this.rpc.getNetwork(),
+        this.rpc.getLatestLedger(),
+        this.horizon.ledgers().order('desc').limit(1).call(),
+        this.rpc.getContractInstance(contractId),
+        this.rpc.queryContract<string>(contractId, 'allowed_asset', {}, this.networkPassphrase),
+      ]);
+      if (network.passphrase !== Networks.TESTNET || this.networkPassphrase !== Networks.TESTNET) {
+        throw new Error('configured network is not Stellar Testnet');
+      }
+      if (allowedAsset.result !== this.xlmSacId) {
+        throw new Error('deployed vault allowlist does not match STELLAR_XLM_SAC_ID');
+      }
+      if (instance.executable.type !== 'contractExecutableWasm') {
+        throw new Error('vault contract is not backed by Wasm');
+      }
+      const deployedWasmHash = instance.executable.wasmHash.toString().toLowerCase();
+      if (this.expectedVaultWasmHash && deployedWasmHash !== this.expectedVaultWasmHash) {
+        throw new Error('deployed vault Wasm hash does not match STELLAR_VAULT_WASM_HASH');
+      }
       return {
+        status: 'ok',
         network: 'testnet',
         passphrase: network.passphrase,
         protocolVersion: network.protocolVersion,
         latestLedger: ledger.sequence,
+        horizonLatestLedger: horizonLedger.records[0]?.sequence ?? null,
         horizonUrl: this.horizonUrl,
         rpcUrl: this.rpcUrl,
-        vaultContractId: this.vaultContractId ?? null,
+        vaultContractId: contractId,
+        vaultWasmHash: deployedWasmHash,
+        expectedVaultWasmHash: this.expectedVaultWasmHash ?? null,
         xlmSacId: this.xlmSacId,
+        vaultAllowedAsset: allowedAsset.result,
         sep7: {
           callbackEnabled: Boolean(this.callbackBaseUrl),
           requestSigningEnabled: Boolean(this.originDomain && this.integritySigner),
@@ -362,8 +390,7 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
     const amount = (value = dto.amount) => { if (!value || BigInt(value) <= 0n) throw new BadRequestException('A positive amount is required'); return nativeToScVal(BigInt(value), { type: 'i128' }); };
     if (dto.action === 'create_goal') {
       const owner = dto.owner ?? dto.source; this.assertAccount(owner);
-      const assetContractId = dto.assetContractId || this.xlmSacId;
-      if (!StrKey.isValidContract(assetContractId)) throw new BadRequestException('A valid SAC assetContractId is required');
+      const assetContractId = assertAllowedVaultAsset(dto.assetContractId, this.xlmSacId);
       return [new Address(owner).toScVal(), new Address(assetContractId).toScVal(), amount(dto.targetAmount), dto.targetDate ? nativeToScVal(BigInt(dto.targetDate), { type: 'u64' }) : nativeToScVal(null)];
     }
     if (dto.action === 'contribute') { const contributor = dto.contributor ?? dto.source; this.assertAccount(contributor); return [id(), new Address(contributor).toScVal(), amount()]; }

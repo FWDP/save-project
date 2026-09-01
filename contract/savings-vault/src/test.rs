@@ -2,7 +2,7 @@ extern crate std;
 
 use super::*;
 use soroban_sdk::{
-    testutils::{Address as _, Ledger},
+    testutils::{storage::Instance as _, Address as _, Ledger},
     token, Address, Env,
 };
 
@@ -24,7 +24,7 @@ fn fixture() -> Fixture {
     let asset = env
         .register_stellar_asset_contract_v2(admin.clone())
         .address();
-    let contract = env.register(SavingsVault, ());
+    let contract = env.register(SavingsVault, SavingsVaultArgs::__constructor(&asset));
     let client = SavingsVaultClient::new(&env, &contract);
     let token = token::Client::new(&env, &asset);
     let token_admin = token::StellarAssetClient::new(&env, &asset);
@@ -130,4 +130,88 @@ fn rejects_invalid_lifecycle_actions() {
         f.client.try_contribute(&id, &f.contributor, &1),
         Err(Ok(VaultError::GoalNotActive))
     );
+}
+
+#[test]
+fn requires_owner_authorization() {
+    let env = Env::default();
+    env.ledger().set_timestamp(1_800_000_000);
+    let owner = Address::generate(&env);
+    let asset = env
+        .register_stellar_asset_contract_v2(Address::generate(&env))
+        .address();
+    let contract = env.register(SavingsVault, SavingsVaultArgs::__constructor(&asset));
+    let client = SavingsVaultClient::new(&env, &contract);
+
+    assert!(client
+        .try_create_goal(&owner, &asset, &10_000, &None)
+        .is_err());
+}
+
+#[test]
+fn rejects_expired_target_dates() {
+    let f = fixture();
+    assert_eq!(
+        f.client
+            .try_create_goal(&f.owner, &f.token.address, &10_000, &Some(1_800_000_000)),
+        Err(Ok(VaultError::InvalidTargetDate))
+    );
+}
+
+#[test]
+fn rejects_assets_outside_the_deployment_allowlist() {
+    let f = fixture();
+    let unsupported = f
+        .env
+        .register_stellar_asset_contract_v2(Address::generate(&f.env))
+        .address();
+
+    assert_eq!(f.client.allowed_asset(), f.token.address);
+    assert_eq!(
+        f.client
+            .try_create_goal(&f.owner, &unsupported, &10_000, &None),
+        Err(Ok(VaultError::UnsupportedAsset))
+    );
+}
+
+#[test]
+fn owner_index_is_isolated_and_complete() {
+    let f = fixture();
+    let second_owner = Address::generate(&f.env);
+    f.client
+        .create_goal(&f.owner, &f.token.address, &10_000, &None);
+    f.client
+        .create_goal(&f.owner, &f.token.address, &20_000, &None);
+    f.client
+        .create_goal(&second_owner, &f.token.address, &30_000, &None);
+
+    let first_owner_goals = f.client.list_goals(&f.owner);
+    let second_owner_goals = f.client.list_goals(&second_owner);
+    assert_eq!(first_owner_goals.len(), 2);
+    assert_eq!(first_owner_goals.get(0).unwrap().id, 1);
+    assert_eq!(first_owner_goals.get(1).unwrap().id, 2);
+    assert_eq!(second_owner_goals.len(), 1);
+    assert_eq!(second_owner_goals.get(0).unwrap().id, 3);
+}
+
+#[test]
+fn contract_activity_extends_instance_ttl() {
+    let f = fixture();
+    let initial_ttl = f
+        .env
+        .as_contract(&f.client.address, || f.env.storage().instance().get_ttl());
+    f.env
+        .ledger()
+        .set_sequence_number(initial_ttl.saturating_sub(INSTANCE_THRESHOLD) + 1);
+    let near_expiry_ttl = f
+        .env
+        .as_contract(&f.client.address, || f.env.storage().instance().get_ttl());
+    f.client
+        .create_goal(&f.owner, &f.token.address, &10_000, &None);
+    let refreshed_ttl = f
+        .env
+        .as_contract(&f.client.address, || f.env.storage().instance().get_ttl());
+
+    assert!(refreshed_ttl > near_expiry_ttl);
+    assert!(refreshed_ttl >= INSTANCE_LIFETIME - 1);
 }
