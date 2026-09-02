@@ -7,10 +7,12 @@ Evidence deployment: `CAJOBHJQORFRFFWN4X5LKLQIURQJNQFABQG6L452SWCFPAPDIWLRILYG`
 Native XLM SAC: `CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC`  
 Verified Wasm hash: `774d426c6165e362bc14930abd04152fbaf3bd9e13a1d8522d6942c99e1bf1a6`
 
-Current app deployment: `CALFEOYNTNJYB5HTUPYHHFHMNNYLYEBOCV43Z73J54G3CQNSH5VCNP7H`  
-Current Wasm hash: `3c6be5dbf17042fcf1041b7a66c7a1f90a4f95233139246ab12cd7eb44bc40ef`.  
-It preserves the reviewed interface and lifecycle behavior while fixing empty `list_goals`
-queries for first-time owners; the regression suite now contains six contract tests.
+Current app deployment: `CDYPVKFWSPHKGDHZ77M2T2TZPCS3LVXDFJDH5PERL5HTUNVFYSTB7AG3`
+
+Current Wasm hash: `0977e310e0f296e8811774ee74800367053879f809cc6ebbb49dca0816b8587f`.
+It preserves the reviewed lifecycle, fixes empty first-owner reads, and immutably allowlists the
+Native XLM SAC; the regression suite now contains eleven contract tests. The transactions below
+remain historical evidence from the earlier compatible Testnet deployment.
 
 ## Deliverable 1 — Stellar Testnet Savings Funding Flow
 
@@ -46,7 +48,7 @@ The last transaction was prepared by `POST /stellar/vault/prepare`, signed exter
 | Invalid/duplicate transitions | Invalid amounts, premature completion/withdrawal, contribution after cancellation, duplicate completion, and duplicate cancellation are rejected. |
 | Events | Typed `GoalCreated`, `Contribution`, `GoalCompleted`, `Withdrawal`, and `GoalCancelled` events are indexed by the API and linked to explorer proof. |
 | Privacy boundary | Only minimum goal and token state is on-chain. Receipts, merchants, income, TIN, budgets, and PII remain off-chain. |
-| Tests and deployment | Five Rust contract tests pass; the deployed Testnet Wasm hash matches the local release build. |
+| Tests and deployment | Eleven Rust contract tests pass; the deployed Testnet Wasm hash matches the local release build. |
 
 Sample goal completion: [f99595…df29](https://stellar.expert/explorer/testnet/tx/f99595d542fb4cb98ee67c00a560494687073a938d696f697aaabea23e58df29). The goal completed with `3,100,000` atomic units before the callback-path withdrawal test.
 

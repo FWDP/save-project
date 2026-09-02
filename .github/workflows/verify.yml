@@ -1,0 +1,109 @@
+name: Verify SAVE
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+  schedule:
+    - cron: '17 3 * * *'
+
+permissions:
+  contents: read
+
+jobs:
+  environment:
+    name: Environment examples
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run env:validate -- --examples --skip-tools
+
+  mobile:
+    name: Mobile lint and types
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm ci --prefix backend
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm run backend:lint
+
+  backend:
+    name: Backend build and tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      - run: npm ci
+      - run: npm test
+
+  admin:
+    name: Admin lint and build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: admin
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: admin/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run build
+
+  contract:
+    name: Soroban checks and Wasm
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32v1-none
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: contract
+      - run: cargo fmt --manifest-path contract/Cargo.toml --all -- --check
+      - run: cargo test --manifest-path contract/Cargo.toml --locked
+      - run: cargo clippy --manifest-path contract/Cargo.toml --all-targets --locked -- -D warnings
+      - run: cargo build --manifest-path contract/Cargo.toml --package save-savings-vault --target wasm32v1-none --release --locked
+      - uses: actions/upload-artifact@v4
+        with:
+          name: save-savings-vault-wasm
+          path: contract/target/wasm32v1-none/release/save_savings_vault.wasm
+          if-no-files-found: error
+
+  testnet-health:
+    name: Deployed Testnet health
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - uses: stellar/stellar-cli@v27.0.0
+      - run: npm run health:testnet

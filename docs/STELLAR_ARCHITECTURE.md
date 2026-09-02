@@ -4,7 +4,7 @@
 
 - Network: Stellar Testnet only. Every signature is bound to `Test SDF Network ; September 2015`.
 - Wallet model: watch-only account plus external-wallet approval through SEP-7. SAVE does not generate, import, transmit, log, or store secret seeds.
-- Asset allowlist: native XLM through its Testnet Stellar Asset Contract. Additional SAC assets require explicit backend configuration and product review.
+- Asset allowlist: native XLM through its Testnet Stellar Asset Contract. Both the backend and the vault constructor enforce the same exact SAC ID; other assets are rejected before simulation and by the contract.
 - Data sources: Horizon for classic accounts/payments; Stellar RPC for Soroban simulation, submission, transaction status, contract reads, and events.
 - Amount representation: classic payment inputs are validated decimal strings with at most seven fractional digits; Soroban values are atomic-unit decimal strings converted to `bigint` server-side.
 - Private data: receipt content, merchant/category labels, user profile data, and goal names remain off-chain. The vault contains only owner, asset, target amount/date, balance, status, and ID.
@@ -23,7 +23,7 @@ Mobile app ── public address / unsigned intent ──> SAVE API
 External wallet ── explicit user approval/signature ──> Stellar Testnet
 ```
 
-The API treats addresses, callbacks, XDR, RPC data, and wallet responses as untrusted. Validation pipes reject unknown DTO fields, signed XDR is decoded against the Testnet passphrase, and an empty signature set is rejected.
+The API treats addresses, callbacks, XDR, RPC data, and wallet responses as untrusted. Validation pipes reject unknown DTO fields, signed XDR is decoded against the Testnet passphrase, and an empty signature set is rejected. The API can prepare, simulate, submit, and reconcile transactions, but it cannot sign for a user. Signed transaction body hashes must match the stored prepared request; Stellar sequence rules reject replayed envelopes.
 
 ## Persistence and reconciliation
 
