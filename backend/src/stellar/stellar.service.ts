@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException, Injectable, OnModuleDestroy, On
 import { ConfigService } from '@nestjs/config';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
+import { Buffer } from 'node:buffer';
 import {
   Address,
   Asset,
@@ -136,7 +137,7 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
       if (instance.executable.type !== 'contractExecutableWasm') {
         throw new Error('vault contract is not backed by Wasm');
       }
-      const deployedWasmHash = instance.executable.wasmHash.toString().toLowerCase();
+      const deployedWasmHash = Buffer.from(instance.executable.wasmHash.toBytes()).toString('hex');
       if (this.expectedVaultWasmHash && deployedWasmHash !== this.expectedVaultWasmHash) {
         throw new Error('deployed vault Wasm hash does not match STELLAR_VAULT_WASM_HASH');
       }

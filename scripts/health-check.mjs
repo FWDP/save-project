@@ -4,6 +4,8 @@ import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 const TESTNET_PASSPHRASE = 'Test SDF Network ; September 2015';
+const TESTNET_HORIZON_URL = 'https://horizon-testnet.stellar.org';
+const TESTNET_RPC_URL = 'https://soroban-testnet.stellar.org';
 const includeServices = process.argv.includes('--services');
 
 function parseEnv(path) {
@@ -25,14 +27,25 @@ async function checkedJson(name, url, options) {
   return body;
 }
 
+function localServiceOrigin(value, fallback) {
+  const url = new URL(value ?? fallback);
+  if (url.protocol !== 'http:' || !['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)) {
+    throw new Error('Service health checks only accept local HTTP endpoints');
+  }
+  return url.origin;
+}
+
 const envPath = existsSync(resolve('backend/.env')) ? resolve('backend/.env') : resolve('backend/.env.example');
 const env = parseEnv(envPath);
 if (env.STELLAR_NETWORK !== 'TESTNET' || env.STELLAR_NETWORK_PASSPHRASE !== TESTNET_PASSPHRASE) {
   throw new Error('Health checks are locked to the canonical Stellar Testnet configuration');
 }
+if (env.STELLAR_HORIZON_URL !== TESTNET_HORIZON_URL || env.STELLAR_RPC_URL !== TESTNET_RPC_URL) {
+  throw new Error('Health checks require the canonical Stellar Testnet Horizon and RPC endpoints');
+}
 
 const rpcCall = async (method) => {
-  const response = await checkedJson(`RPC ${method}`, env.STELLAR_RPC_URL, {
+  const response = await checkedJson(`RPC ${method}`, TESTNET_RPC_URL, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ jsonrpc: '2.0', id: method, method }),
@@ -41,7 +54,7 @@ const rpcCall = async (method) => {
   return response.result;
 };
 
-await checkedJson('Horizon Testnet', env.STELLAR_HORIZON_URL);
+await checkedJson('Horizon Testnet', TESTNET_HORIZON_URL);
 const network = await rpcCall('getNetwork');
 await rpcCall('getLatestLedger');
 if ((network.passphrase ?? network.networkPassphrase) !== TESTNET_PASSPHRASE) {
@@ -51,8 +64,8 @@ if ((network.passphrase ?? network.networkPassphrase) !== TESTNET_PASSPHRASE) {
 const deployedWasm = execFileSync('stellar', [
   'contract', 'fetch',
   '--id', env.STELLAR_VAULT_CONTRACT_ID,
-  '--rpc-url', env.STELLAR_RPC_URL,
-  '--network-passphrase', env.STELLAR_NETWORK_PASSPHRASE,
+  '--rpc-url', TESTNET_RPC_URL,
+  '--network-passphrase', TESTNET_PASSPHRASE,
 ]);
 const deployedHash = createHash('sha256').update(deployedWasm).digest('hex');
 if (deployedHash !== env.STELLAR_VAULT_WASM_HASH) {
@@ -62,10 +75,8 @@ console.log(`ok  Vault contract reachable: ${env.STELLAR_VAULT_CONTRACT_ID}`);
 console.log(`ok  Deployed Wasm hash: ${deployedHash}`);
 
 if (includeServices) {
-  const adminEnvPath = existsSync(resolve('admin/.env.local')) ? resolve('admin/.env.local') : resolve('admin/.env.example');
-  const adminEnv = parseEnv(adminEnvPath);
-  const backendUrl = (adminEnv.SAVE_API_URL ?? 'http://localhost:3000').replace(/\/+$/, '');
-  const adminUrl = (adminEnv.SAVE_ADMIN_URL ?? 'http://localhost:3001').replace(/\/+$/, '');
+  const backendUrl = localServiceOrigin(process.env.SAVE_API_URL, 'http://localhost:3000');
+  const adminUrl = localServiceOrigin(process.env.SAVE_ADMIN_URL, 'http://localhost:3001');
   await checkedJson('SAVE API health', `${backendUrl}/health`);
   await checkedJson('SAVE admin health', `${adminUrl}/api/health`);
 }
