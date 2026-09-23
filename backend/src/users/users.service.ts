@@ -1,4 +1,9 @@
-import { Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  OnModuleInit,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 
@@ -36,15 +41,21 @@ function toUserResponse(doc: any): UserResponse {
     name: doc.name,
     email: doc.email,
     role: doc.role,
-    createdAt: doc.createdAt instanceof Date ? doc.createdAt.toISOString() : (doc.createdAt || new Date().toISOString()),
+    createdAt:
+      doc.createdAt instanceof Date
+        ? doc.createdAt.toISOString()
+        : doc.createdAt || new Date().toISOString(),
   };
 }
 
 @Injectable()
 export class UsersService implements OnModuleInit {
-  constructor(@InjectModel(User.name) private readonly userModel: Model<UserDocument>) {}
+  constructor(
+    @InjectModel(User.name) private readonly userModel: Model<UserDocument>,
+  ) {}
 
   async onModuleInit() {
+    if (process.env.SAVE_DEMO_MODE !== 'true') return;
     try {
       const count = await this.userModel.countDocuments();
       if (count === 0) {
@@ -53,6 +64,10 @@ export class UsersService implements OnModuleInit {
         );
       }
     } catch {
+      if (process.env.SAVE_DEMO_MODE !== 'true')
+        throw new ServiceUnavailableException(
+          'Database unavailable. Please retry.',
+        );
       // Ignore if DB is offline during module init
     }
   }
@@ -60,8 +75,12 @@ export class UsersService implements OnModuleInit {
   async findAll(): Promise<UserResponse[]> {
     try {
       const users = await this.userModel.find().sort({ createdAt: -1 }).lean();
-      if (users.length > 0) return users.map(toUserResponse);
+      return users.map(toUserResponse);
     } catch {
+      if (process.env.SAVE_DEMO_MODE !== 'true')
+        throw new ServiceUnavailableException(
+          'Database unavailable. Please retry.',
+        );
       // Fallback
     }
     return DEMO_USERS;
@@ -74,6 +93,10 @@ export class UsersService implements OnModuleInit {
         if (user) return toUserResponse(user);
       }
     } catch {
+      if (process.env.SAVE_DEMO_MODE !== 'true')
+        throw new ServiceUnavailableException(
+          'Database unavailable. Please retry.',
+        );
       // Fallback
     }
 
@@ -89,6 +112,10 @@ export class UsersService implements OnModuleInit {
       const saved = await user.save();
       return toUserResponse(saved.toObject());
     } catch {
+      if (process.env.SAVE_DEMO_MODE !== 'true')
+        throw new ServiceUnavailableException(
+          'Database unavailable. Please retry.',
+        );
       const fallback: UserResponse = {
         id: `usr_${Date.now()}`,
         name: dto.name,
@@ -110,6 +137,10 @@ export class UsersService implements OnModuleInit {
         if (updated) return toUserResponse(updated);
       }
     } catch {
+      if (process.env.SAVE_DEMO_MODE !== 'true')
+        throw new ServiceUnavailableException(
+          'Database unavailable. Please retry.',
+        );
       // Fallback
     }
 
@@ -129,6 +160,10 @@ export class UsersService implements OnModuleInit {
         if (deleted) return { deleted: true };
       }
     } catch {
+      if (process.env.SAVE_DEMO_MODE !== 'true')
+        throw new ServiceUnavailableException(
+          'Database unavailable. Please retry.',
+        );
       // Fallback
     }
 

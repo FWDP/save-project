@@ -1,5 +1,7 @@
+import { MonthPicker } from '@/components/month-picker';
+import { exportFile } from '@/lib/export-file';
 import { useMemo, useState } from 'react';
-import { Alert, Pressable, Share, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { FinancePage } from '@/components/layout/finance-page';
 import type { ApiTransaction } from '@/lib/api';
@@ -7,8 +9,8 @@ import { useFinanceStore } from '@/store/finance-store';
 
 type PeriodKey = 'month' | 'lastMonth' | 'threeMonths' | 'sixMonths' | 'year';
 const PERIODS: { key: PeriodKey; label: string }[] = [
-  { key: 'month', label: 'This month' },
-  { key: 'lastMonth', label: 'Last month' },
+  { key: 'month', label: 'Selected month' },
+  { key: 'lastMonth', label: 'Previous month' },
   { key: 'threeMonths', label: 'Last 3 months' },
   { key: 'sixMonths', label: 'Last 6 months' },
   { key: 'year', label: 'Year to date' },
@@ -17,29 +19,41 @@ const PERIODS: { key: PeriodKey; label: string }[] = [
 const money = (value: number) =>
   `₱${value.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
-function rangeFor(key: PeriodKey) {
-  const now = new Date();
+function rangeFor(key: PeriodKey, selectedMonth: string) {
+  const now = new Date(`${selectedMonth}-15T12:00:00`);
   const year = now.getFullYear();
   const month = now.getMonth();
 
   if (key === 'lastMonth') {
-    const start = new Date(Date.UTC(year, month - 1, 1)).toISOString().slice(0, 10);
+    const start = new Date(Date.UTC(year, month - 1, 1))
+      .toISOString()
+      .slice(0, 10);
     const end = new Date(Date.UTC(year, month, 0)).toISOString().slice(0, 10);
     return { start, end };
   }
   if (key === 'threeMonths') {
-    const start = new Date(Date.UTC(year, month - 2, 1)).toISOString().slice(0, 10);
-    const end = new Date(Date.UTC(year, month + 1, 0)).toISOString().slice(0, 10);
+    const start = new Date(Date.UTC(year, month - 2, 1))
+      .toISOString()
+      .slice(0, 10);
+    const end = new Date(Date.UTC(year, month + 1, 0))
+      .toISOString()
+      .slice(0, 10);
     return { start, end };
   }
   if (key === 'sixMonths') {
-    const start = new Date(Date.UTC(year, month - 5, 1)).toISOString().slice(0, 10);
-    const end = new Date(Date.UTC(year, month + 1, 0)).toISOString().slice(0, 10);
+    const start = new Date(Date.UTC(year, month - 5, 1))
+      .toISOString()
+      .slice(0, 10);
+    const end = new Date(Date.UTC(year, month + 1, 0))
+      .toISOString()
+      .slice(0, 10);
     return { start, end };
   }
   if (key === 'year') {
     const start = new Date(Date.UTC(year, 0, 1)).toISOString().slice(0, 10);
-    const end = new Date(Date.UTC(year, month + 1, 0)).toISOString().slice(0, 10);
+    const end = new Date(Date.UTC(year, month + 1, 0))
+      .toISOString()
+      .slice(0, 10);
     return { start, end };
   }
   const start = new Date(Date.UTC(year, month, 1)).toISOString().slice(0, 10);
@@ -47,8 +61,8 @@ function rangeFor(key: PeriodKey) {
   return { start, end };
 }
 
-function inPeriod(item: ApiTransaction, key: PeriodKey) {
-  const { start, end } = rangeFor(key);
+function inPeriod(item: ApiTransaction, key: PeriodKey, selectedMonth: string) {
+  const { start, end } = rangeFor(key, selectedMonth);
   return item.date >= start && item.date <= end;
 }
 
@@ -57,17 +71,29 @@ function stats(items: ApiTransaction[]) {
   const total = expenses.reduce((sum, item) => sum + item.amount, 0);
   const categories = Object.entries(
     expenses.reduce<Record<string, number>>(
-      (all, item) => ({ ...all, [item.category]: (all[item.category] ?? 0) + item.amount }),
+      (all, item) => ({
+        ...all,
+        [item.category]: (all[item.category] ?? 0) + item.amount,
+      }),
       {},
     ),
   ).sort((a, b) => b[1] - a[1]);
 
   const merchants = Object.entries(
-    expenses.reduce<Record<string, { count: number; total: number }>>((all, item) => {
-      const name = item.merchant?.trim() || item.description;
-      const previous = all[name] ?? { count: 0, total: 0 };
-      return { ...all, [name]: { count: previous.count + 1, total: previous.total + item.amount } };
-    }, {}),
+    expenses.reduce<Record<string, { count: number; total: number }>>(
+      (all, item) => {
+        const name = item.merchant?.trim() || item.description;
+        const previous = all[name] ?? { count: 0, total: 0 };
+        return {
+          ...all,
+          [name]: {
+            count: previous.count + 1,
+            total: previous.total + item.amount,
+          },
+        };
+      },
+      {},
+    ),
   )
     .sort((a, b) => b[1].total - a[1].total)
     .slice(0, 5);
@@ -83,18 +109,24 @@ function stats(items: ApiTransaction[]) {
 }
 
 export default function ReportsScreen() {
-  const transactions = useFinanceStore((state) => state.transactions);
+  const { transactions, selectedMonth } = useFinanceStore();
   const [mode, setMode] = useState<'single' | 'compare'>('single');
   const [periodA, setPeriodA] = useState<PeriodKey>('month');
   const [periodB, setPeriodB] = useState<PeriodKey>('lastMonth');
 
   const a = useMemo(
-    () => stats(transactions.filter((item) => inPeriod(item, periodA))),
-    [periodA, transactions],
+    () =>
+      stats(
+        transactions.filter((item) => inPeriod(item, periodA, selectedMonth)),
+      ),
+    [periodA, transactions, selectedMonth],
   );
   const b = useMemo(
-    () => stats(transactions.filter((item) => inPeriod(item, periodB))),
-    [periodB, transactions],
+    () =>
+      stats(
+        transactions.filter((item) => inPeriod(item, periodB, selectedMonth)),
+      ),
+    [periodB, transactions, selectedMonth],
   );
 
   const maxCategory = Math.max(
@@ -104,46 +136,52 @@ export default function ReportsScreen() {
   );
 
   const exportCsv = async () => {
-    const escape = (value: unknown) => `"${String(value ?? '').replaceAll('"', '""')}"`;
+    const escape = (value: unknown) =>
+      `"${String(value ?? '').replaceAll('"', '""')}"`;
     const csv = [
       'date,type,amount,category,description,merchant,tags',
-      ...transactions.map((item) =>
-        [
-          item.date,
-          item.type,
-          item.amount,
-          item.category,
-          item.description,
-          item.merchant,
-          item.tags?.join('|'),
-        ]
-          .map(escape)
-          .join(','),
-      ),
+      ...transactions
+        .filter((item) => inPeriod(item, periodA, selectedMonth))
+        .map((item) =>
+          [
+            item.date,
+            item.type,
+            item.amount,
+            item.category,
+            item.description,
+            item.merchant,
+            item.tags?.join('|'),
+          ]
+            .map(escape)
+            .join(','),
+        ),
     ].join('\n');
 
     try {
-      await Share.share({
-        title: `SAVE report ${new Date().toISOString().slice(0, 10)}`,
-        message: csv,
-      });
+      await exportFile(`save-report-${periodA}.csv`, csv, 'text/csv');
     } catch {
-      Alert.alert('Export failed', 'The CSV could not be shared on this device.');
+      Alert.alert(
+        'Export failed',
+        'The CSV could not be shared on this device.',
+      );
     }
   };
 
   return (
     <FinancePage title="Reports" subtitle="Personal Spending Analysis">
+      <MonthPicker />
       <View style={styles.toolbar}>
         <View style={styles.segment}>
           <Pressable
             style={[styles.tab, mode === 'single' && styles.tabActive]}
-            onPress={() => setMode('single')}>
+            onPress={() => setMode('single')}
+          >
             <Text style={styles.tabText}>Single</Text>
           </Pressable>
           <Pressable
             style={[styles.tab, mode === 'compare' && styles.tabActive]}
-            onPress={() => setMode('compare')}>
+            onPress={() => setMode('compare')}
+          >
             <Text style={styles.tabText}>Compare</Text>
           </Pressable>
         </View>
@@ -189,7 +227,9 @@ export default function ReportsScreen() {
                 <View
                   style={[
                     styles.bar,
-                    { width: `${Math.max(av ? 3 : 0, (av / maxCategory) * 100)}%` },
+                    {
+                      width: `${Math.max(av ? 3 : 0, (av / maxCategory) * 100)}%`,
+                    },
                   ]}
                 />
                 {mode === 'compare' ? (
@@ -197,7 +237,9 @@ export default function ReportsScreen() {
                     style={[
                       styles.bar,
                       styles.barB,
-                      { width: `${Math.max(bv ? 3 : 0, (bv / maxCategory) * 100)}%` },
+                      {
+                        width: `${Math.max(bv ? 3 : 0, (bv / maxCategory) * 100)}%`,
+                      },
                     ]}
                   />
                 ) : null}
@@ -274,7 +316,8 @@ function PeriodButtons({
         <Pressable
           key={period.key}
           style={[styles.pill, value === period.key && styles.pillActive]}
-          onPress={() => onChange(period.key)}>
+          onPress={() => onChange(period.key)}
+        >
           <Text style={styles.pillText}>{period.label}</Text>
         </Pressable>
       ))}
@@ -321,7 +364,12 @@ function CompareSummary({
             <Text style={styles.compareMetric}>{label}</Text>
             <Text style={styles.compareA}>{format(av)}</Text>
             <Text style={styles.compareB}>{format(bv)}</Text>
-            <Text style={[styles.change, delta > 0 ? styles.negative : styles.positive]}>
+            <Text
+              style={[
+                styles.change,
+                delta > 0 ? styles.negative : styles.positive,
+              ]}
+            >
               {delta > 0 ? '↑' : '↓'} {Math.abs(delta * 100).toFixed(1)}%
             </Text>
           </View>
@@ -378,7 +426,13 @@ const styles = StyleSheet.create({
   metricValue: { color: '#f2f6fb', fontWeight: '800' },
   count: { color: '#8996aa', marginRight: 10 },
   barRow: { flexDirection: 'row', alignItems: 'center', minHeight: 50 },
-  barLabel: { width: 112, textAlign: 'right', paddingRight: 12, color: '#dce4ef', fontSize: 11 },
+  barLabel: {
+    width: 112,
+    textAlign: 'right',
+    paddingRight: 12,
+    color: '#dce4ef',
+    fontSize: 11,
+  },
   barArea: { flex: 1, gap: 4 },
   bar: { height: 15, borderRadius: 4, backgroundColor: '#559be8' },
   barB: { backgroundColor: '#dc9410' },
@@ -400,7 +454,13 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
   },
   compareMetric: { flex: 1.4, color: '#9aa7bc', fontSize: 10 },
-  compareA: { flex: 1, textAlign: 'right', color: '#69afff', fontSize: 10, fontWeight: '700' },
+  compareA: {
+    flex: 1,
+    textAlign: 'right',
+    color: '#69afff',
+    fontSize: 10,
+    fontWeight: '700',
+  },
   compareB: { flex: 1, textAlign: 'right', color: '#e7a522', fontSize: 10 },
   change: { flex: 0.9, textAlign: 'right', color: '#8c99ad', fontSize: 9 },
   positive: { color: '#28ca83' },

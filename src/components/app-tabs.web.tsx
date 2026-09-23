@@ -25,7 +25,7 @@ export default function AppTabs() {
             <TabButton>Dashboard</TabButton>
           </TabTrigger>
           <TabTrigger name="expenses" href="/expenses" asChild>
-            <TabButton>Expenses</TabButton>
+            <TabButton>Transactions</TabButton>
           </TabTrigger>
           <TabTrigger name="budgets" href="/budgets" asChild>
             <TabButton>Budgets</TabButton>
@@ -42,13 +42,21 @@ export default function AppTabs() {
   );
 }
 
-export function TabButton({ children, isFocused, ...props }: TabTriggerSlotProps) {
+export function TabButton({
+  children,
+  isFocused,
+  ...props
+}: TabTriggerSlotProps) {
   return (
     <Pressable {...props} style={({ pressed }) => pressed && styles.pressed}>
       <ThemedView
         type={isFocused ? 'backgroundSelected' : 'backgroundElement'}
-        style={styles.tabButtonView}>
-        <ThemedText type="small" themeColor={isFocused ? 'text' : 'textSecondary'}>
+        style={styles.tabButtonView}
+      >
+        <ThemedText
+          type="small"
+          themeColor={isFocused ? 'text' : 'textSecondary'}
+        >
           {children}
         </ThemedText>
       </ThemedView>

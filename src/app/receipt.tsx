@@ -1,35 +1,55 @@
+import { useRefreshFinance } from '@/components/providers/finance-data-provider';
+import { localDate, validDate } from '@/lib/finance';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import {
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { createTransaction, type ApiTransaction } from '@/lib/api';
-import { saveTransactions } from '@/lib/sqlite';
+import { saveTransactionDraft } from '@/lib/transaction-writes';
 import { useExpenseDraftStore } from '@/store/expense-draft-store';
 import { useFinanceStore } from '@/store/finance-store';
 
 export default function ReceiptScreen() {
   const router = useRouter();
-  const { transactions, setTransactions, categories } = useFinanceStore();
+  const refresh = useRefreshFinance();
+  const { setTransactions, categories } = useFinanceStore();
   const { draft, patchDraft, resetDraft } = useExpenseDraftStore();
 
-  const [merchant, setMerchant] = useState(draft.merchant || 'SM Supermarket');
-  const [category, setCategory] = useState(draft.category || (categories[0]?.name ?? 'Groceries'));
-  const [amount, setAmount] = useState(draft.amount || '1428.50');
-  const [date, setDate] = useState(draft.date || new Date().toISOString().slice(0, 10));
-  const [status, setStatus] = useState('Scanned receipt values ready for review');
+  const [merchant, setMerchant] = useState(draft.merchant || '');
+  const [category, setCategory] = useState(
+    draft.category ||
+      (categories.find((item) => item.type === 'expense')?.name ?? ''),
+  );
+  const [amount, setAmount] = useState(draft.amount || '');
+  const [date, setDate] = useState(draft.date || localDate());
+  const [status, setStatus] = useState(
+    'Enter the details from your receipt. Automatic extraction is not available yet.',
+  );
   const [saving, setSaving] = useState(false);
 
   const handleSaveReceipt = async () => {
+    if (saving) return;
     const numAmount = Number(amount);
-    if (!merchant.trim() || !Number.isFinite(numAmount) || numAmount <= 0) {
+    if (
+      !validDate(date) ||
+      !merchant.trim() ||
+      !Number.isFinite(numAmount) ||
+      numAmount <= 0
+    ) {
       setStatus('Please ensure merchant and positive amount are provided.');
       return;
     }
 
     setSaving(true);
     const transactionPayload = {
-      userId: 'usr_2',
+      userId: '',
       type: 'expense' as const,
       amount: numAmount,
       category,
@@ -41,22 +61,19 @@ export default function ReceiptScreen() {
     };
 
     try {
-      const created = await createTransaction(transactionPayload);
-      const next = [created, ...transactions];
+      const created = await saveTransactionDraft(transactionPayload);
+      const next = [created, ...useFinanceStore.getState().transactions];
       setTransactions(next);
-      saveTransactions(next);
+      void refresh();
+
       resetDraft();
       router.replace('/expenses');
-    } catch {
-      const fallback: ApiTransaction = {
-        id: `txn_receipt_${Date.now()}`,
-        ...transactionPayload,
-      };
-      const next = [fallback, ...transactions];
-      setTransactions(next);
-      saveTransactions(next);
-      resetDraft();
-      router.replace('/expenses');
+    } catch (error) {
+      setStatus(
+        error instanceof Error
+          ? error.message
+          : 'Could not save. Your receipt details are still here; please retry.',
+      );
     } finally {
       setSaving(false);
     }
@@ -78,12 +95,12 @@ export default function ReceiptScreen() {
     <SafeAreaView style={styles.safeArea}>
       <ScrollView contentContainerStyle={styles.container}>
         <View style={styles.header}>
-          <Text style={styles.eyebrow}>Receipt Scanner</Text>
-          <Text style={styles.title}>Review Scanned Details</Text>
+          <Text style={styles.eyebrow}>Receipt attachment</Text>
+          <Text style={styles.title}>Review Receipt Details</Text>
         </View>
 
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>Detected Values</Text>
+          <Text style={styles.cardTitle}>Receipt details</Text>
 
           <View style={styles.row}>
             <Text style={styles.label}>Merchant</Text>
@@ -147,12 +164,20 @@ export default function ReceiptScreen() {
         <Pressable
           disabled={saving}
           onPress={handleSaveReceipt}
-          style={[styles.primaryButton, saving && { opacity: 0.6 }]}>
-          <Text style={styles.primaryButtonText}>{saving ? 'Saving…' : 'Quick Save Receipt'}</Text>
+          style={[styles.primaryButton, saving && { opacity: 0.6 }]}
+        >
+          <Text style={styles.primaryButtonText}>
+            {saving ? 'Saving…' : 'Quick Save Receipt'}
+          </Text>
         </Pressable>
 
-        <Pressable onPress={handleEditInFullForm} style={styles.secondaryButton}>
-          <Text style={styles.secondaryButtonText}>Edit in Full Expense Form</Text>
+        <Pressable
+          onPress={handleEditInFullForm}
+          style={styles.secondaryButton}
+        >
+          <Text style={styles.secondaryButtonText}>
+            Edit in Full Expense Form
+          </Text>
         </Pressable>
 
         <Pressable onPress={() => router.back()} style={styles.linkButton}>

@@ -1,10 +1,14 @@
-import { Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
+import { currentOwner } from '../auth/auth-context';
+import {
+  Injectable,
+  NotFoundException,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 
 import { CreateBudgetDto, UpdateBudgetDto } from './budgets.dto';
 import { Budget, BudgetDocument } from './budget.schema';
-import { DEMO_BUDGETS } from '../seed/demo-data';
 
 export type BudgetResponse = {
   id: string;
@@ -27,125 +31,63 @@ function toBudgetResponse(doc: any): BudgetResponse {
 }
 
 @Injectable()
-export class BudgetsService implements OnModuleInit {
-  private inMemoryBudgets: BudgetResponse[] = DEMO_BUDGETS.map(toBudgetResponse);
-
-  constructor(@InjectModel(Budget.name) private readonly budgetModel: Model<BudgetDocument>) {}
-
-  async onModuleInit() {
+export class BudgetsService {
+  constructor(
+    @InjectModel(Budget.name) private readonly model: Model<BudgetDocument>,
+  ) {}
+  private async db<T>(operation: () => PromiseLike<T>): Promise<T> {
     try {
-      const count = await this.budgetModel.countDocuments();
-      if (count === 0) {
-        await this.budgetModel.insertMany(
-          DEMO_BUDGETS.map(({ category, limit, spent, period }) => ({
-            userId: 'usr_2',
-            category,
-            limit,
-            spent,
-            period,
-          })),
-        );
-      }
+      return await operation();
     } catch {
-      // Ignore if DB offline
+      throw new ServiceUnavailableException(
+        'Database unavailable. Please retry.',
+      );
     }
   }
-
   async findAll(): Promise<BudgetResponse[]> {
-    try {
-      const budgets = await this.budgetModel.find().sort({ category: 1 }).lean();
-      if (budgets.length > 0) return budgets.map(toBudgetResponse);
-    } catch {
-      // Fallback
-    }
-    return this.inMemoryBudgets;
+    const userId = currentOwner();
+    return (
+      await this.db(() =>
+        this.model.find({ userId }).sort({ createdAt: -1 }).lean(),
+      )
+    ).map(toBudgetResponse);
   }
-
   async findOne(id: string): Promise<BudgetResponse> {
-    try {
-      if (Types.ObjectId.isValid(id)) {
-        const budget = await this.budgetModel.findById(id).lean();
-        if (budget) return toBudgetResponse(budget);
-      }
-    } catch {
-      // Fallback
-    }
-
-    const fallback = this.inMemoryBudgets.find((b) => b.id === id);
-    if (fallback) return fallback;
-
-    throw new NotFoundException(`Budget with id ${id} not found`);
+    const userId = currentOwner();
+    if (!Types.ObjectId.isValid(id)) throw new NotFoundException();
+    const row = await this.db(() =>
+      this.model.findOne({ _id: id, userId }).lean(),
+    );
+    if (!row) throw new NotFoundException();
+    return toBudgetResponse(row);
   }
-
   async create(dto: CreateBudgetDto): Promise<BudgetResponse> {
-    try {
-      const budget = new this.budgetModel({
-        userId: dto.userId,
-        category: dto.category,
-        limit: dto.limit,
-        spent: dto.spent ?? 0,
-        period: dto.period ?? 'monthly',
-      });
-      const saved = await budget.save();
-      return toBudgetResponse(saved.toObject());
-    } catch {
-      const fallback: BudgetResponse = {
-        id: `bud_${Date.now()}`,
-        userId: dto.userId,
-        category: dto.category,
-        limit: dto.limit,
-        spent: dto.spent ?? 0,
-        period: dto.period ?? 'monthly',
-      };
-      this.inMemoryBudgets.push(fallback);
-      return fallback;
-    }
+    const userId = currentOwner();
+    const row = await this.db(() => new this.model({ ...dto, userId }).save());
+    return toBudgetResponse(row.toObject());
   }
-
   async update(id: string, dto: UpdateBudgetDto): Promise<BudgetResponse> {
-    try {
-      if (Types.ObjectId.isValid(id)) {
-        const updated = await this.budgetModel
-          .findByIdAndUpdate(
-            id,
-            { $set: Object.fromEntries(Object.entries(dto).filter(([, value]) => value !== undefined)) },
-            { new: true },
-          )
-          .lean();
-        if (updated) return toBudgetResponse(updated);
-      }
-    } catch {
-      // Fallback
-    }
-
-    const index = this.inMemoryBudgets.findIndex((b) => b.id === id);
-    if (index !== -1) {
-      this.inMemoryBudgets[index] = {
-        ...this.inMemoryBudgets[index],
-        ...Object.fromEntries(Object.entries(dto).filter(([, value]) => value !== undefined)),
-      };
-      return this.inMemoryBudgets[index];
-    }
-
-    throw new NotFoundException(`Budget with id ${id} not found`);
+    const userId = currentOwner();
+    if (!Types.ObjectId.isValid(id)) throw new NotFoundException();
+    const row = await this.db(() =>
+      this.model
+        .findOneAndUpdate(
+          { _id: id, userId },
+          { $set: { ...dto, userId } },
+          { new: true, runValidators: true },
+        )
+        .lean(),
+    );
+    if (!row) throw new NotFoundException();
+    return toBudgetResponse(row);
   }
-
   async remove(id: string): Promise<{ deleted: boolean }> {
-    try {
-      if (Types.ObjectId.isValid(id)) {
-        const deleted = await this.budgetModel.findByIdAndDelete(id).lean();
-        if (deleted) return { deleted: true };
-      }
-    } catch {
-      // Fallback
-    }
-
-    const index = this.inMemoryBudgets.findIndex((b) => b.id === id);
-    if (index !== -1) {
-      this.inMemoryBudgets.splice(index, 1);
-      return { deleted: true };
-    }
-
-    throw new NotFoundException(`Budget with id ${id} not found`);
+    const userId = currentOwner();
+    if (!Types.ObjectId.isValid(id)) throw new NotFoundException();
+    const row = await this.db(() =>
+      this.model.findOneAndDelete({ _id: id, userId }).lean(),
+    );
+    if (!row) throw new NotFoundException();
+    return { deleted: true };
   }
 }

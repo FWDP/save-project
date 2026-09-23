@@ -1,17 +1,21 @@
 import {
-    IsDateString,
-    IsEnum,
-    IsNotEmpty,
-    IsNumber,
-    IsObject,
-    IsOptional,
-    IsBoolean,
-    IsArray,
-    IsString,
-    Min,
+  IsDateString,
+  IsEnum,
+  IsNotEmpty,
+  IsNumber,
+  IsObject,
+  IsOptional,
+  IsBoolean,
+  IsArray,
+  IsString,
+  Min,
 } from 'class-validator';
 
 export class CreateTransactionDto {
+  @IsOptional()
+  @IsString()
+  clientMutationId?: string;
+
   @IsString()
   @IsNotEmpty()
   userId: string;
@@ -19,8 +23,8 @@ export class CreateTransactionDto {
   @IsEnum(['expense', 'income'])
   type: 'expense' | 'income';
 
-  @IsNumber()
-  @Min(0)
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0.01)
   amount: number;
 
   @IsString()
@@ -71,8 +75,8 @@ export class UpdateTransactionDto {
   type?: 'expense' | 'income';
 
   @IsOptional()
-  @IsNumber()
-  @Min(0)
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0.01)
   amount?: number;
 
   @IsOptional()

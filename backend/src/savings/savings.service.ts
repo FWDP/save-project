@@ -1,10 +1,18 @@
-import { Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
+import { currentOwner } from '../auth/auth-context';
+import {
+  Injectable,
+  NotFoundException,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 
 import { CreateSavingsGoalDto, UpdateSavingsGoalDto } from './savings.dto';
-import { SavingsGoal, SavingsGoalDocument, SavingsGoalStatus } from './savings-goal.schema';
-import { DEMO_SAVINGS_GOALS } from '../seed/demo-data';
+import {
+  SavingsGoal,
+  SavingsGoalDocument,
+  SavingsGoalStatus,
+} from './savings-goal.schema';
 
 export type SavingsGoalResponse = {
   id: string;
@@ -39,142 +47,85 @@ function toSavingsGoalResponse(doc: any): SavingsGoalResponse {
 }
 
 @Injectable()
-export class SavingsService implements OnModuleInit {
-  private inMemoryGoals: SavingsGoalResponse[] = DEMO_SAVINGS_GOALS.map((g) => ({
-    ...g,
-    network: 'testnet',
-  }));
-
-  constructor(@InjectModel(SavingsGoal.name) private readonly savingsGoalModel: Model<SavingsGoalDocument>) {}
-
-  async onModuleInit() {
+export class SavingsService {
+  constructor(
+    @InjectModel(SavingsGoal.name)
+    private readonly model: Model<SavingsGoalDocument>,
+  ) {}
+  private async db<T>(operation: () => PromiseLike<T>): Promise<T> {
     try {
-      const count = await this.savingsGoalModel.countDocuments();
-      if (count === 0) {
-        await this.savingsGoalModel.insertMany(
-          DEMO_SAVINGS_GOALS.map(({ name, targetAmount, fundedAmount, targetDate, asset, status }) => ({
-            name,
-            targetAmount,
-            fundedAmount,
-            targetDate,
-            asset,
-            status,
-            network: 'testnet',
-          })),
-        );
-      }
+      return await operation();
     } catch {
-      // Ignore if DB offline
+      throw new ServiceUnavailableException(
+        'Database unavailable. Please retry.',
+      );
     }
   }
-
   async findAll(): Promise<SavingsGoalResponse[]> {
-    try {
-      const goals = await this.savingsGoalModel.find().sort({ createdAt: -1 }).lean();
-      if (goals.length > 0) return goals.map(toSavingsGoalResponse);
-    } catch {
-      // Fallback
-    }
-    return this.inMemoryGoals;
+    const userId = currentOwner();
+    return (
+      await this.db(() =>
+        this.model.find({ userId }).sort({ createdAt: -1 }).lean(),
+      )
+    ).map(toSavingsGoalResponse);
   }
-
   async findOne(id: string): Promise<SavingsGoalResponse> {
-    try {
-      if (Types.ObjectId.isValid(id)) {
-        const goal = await this.savingsGoalModel.findById(id).lean();
-        if (goal) return toSavingsGoalResponse(goal);
-      }
-    } catch {
-      // Fallback
-    }
-
-    const fallback = this.inMemoryGoals.find((g) => g.id === id);
-    if (fallback) return fallback;
-
-    throw new NotFoundException(`Savings goal with id ${id} not found`);
+    const userId = currentOwner();
+    if (!Types.ObjectId.isValid(id)) throw new NotFoundException();
+    const row = await this.db(() =>
+      this.model.findOne({ _id: id, userId }).lean(),
+    );
+    if (!row) throw new NotFoundException();
+    return toSavingsGoalResponse(row);
   }
-
   async create(dto: CreateSavingsGoalDto): Promise<SavingsGoalResponse> {
-    try {
-      const goal = new this.savingsGoalModel({
-        name: dto.name,
-        targetAmount: dto.targetAmount,
-        fundedAmount: dto.fundedAmount ?? 0,
-        targetDate: dto.targetDate,
-        asset: dto.asset ?? 'XLM',
-        status: dto.status ?? 'draft',
-        network: dto.network ?? 'testnet',
-        ownerAddress: dto.ownerAddress,
-        contractId: dto.contractId,
-        vaultGoalId: dto.vaultGoalId,
-        transactionHash: dto.transactionHash,
-      });
-      const saved = await goal.save();
-      return toSavingsGoalResponse(saved.toObject());
-    } catch {
-      const fallback: SavingsGoalResponse = {
-        id: `goal_${Date.now()}`,
-        name: dto.name,
-        targetAmount: dto.targetAmount,
-        fundedAmount: dto.fundedAmount ?? 0,
-        targetDate: dto.targetDate,
-        asset: dto.asset ?? 'XLM',
-        status: dto.status ?? 'draft',
-        network: dto.network ?? 'testnet',
-        ownerAddress: dto.ownerAddress,
-        contractId: dto.contractId,
-        vaultGoalId: dto.vaultGoalId,
-        transactionHash: dto.transactionHash,
-      };
-      this.inMemoryGoals.unshift(fallback);
-      return fallback;
-    }
+    const userId = currentOwner();
+    const row = await this.db(() => new this.model({ ...dto, userId }).save());
+    return toSavingsGoalResponse(row.toObject());
   }
-
-  async update(id: string, dto: UpdateSavingsGoalDto): Promise<SavingsGoalResponse> {
-    try {
-      if (Types.ObjectId.isValid(id)) {
-        const updated = await this.savingsGoalModel
-          .findByIdAndUpdate(
-            id,
-            { $set: Object.fromEntries(Object.entries(dto).filter(([, value]) => value !== undefined)) },
-            { new: true },
-          )
-          .lean();
-        if (updated) return toSavingsGoalResponse(updated);
-      }
-    } catch {
-      // Fallback
-    }
-
-    const index = this.inMemoryGoals.findIndex((g) => g.id === id);
-    if (index !== -1) {
-      this.inMemoryGoals[index] = {
-        ...this.inMemoryGoals[index],
-        ...Object.fromEntries(Object.entries(dto).filter(([, value]) => value !== undefined)),
-      };
-      return this.inMemoryGoals[index];
-    }
-
-    throw new NotFoundException(`Savings goal with id ${id} not found`);
+  async update(
+    id: string,
+    dto: UpdateSavingsGoalDto,
+  ): Promise<SavingsGoalResponse> {
+    const userId = currentOwner();
+    if (!Types.ObjectId.isValid(id)) throw new NotFoundException();
+    const row = await this.db(() =>
+      this.model
+        .findOneAndUpdate(
+          { _id: id, userId },
+          { $set: { ...dto, userId } },
+          { new: true, runValidators: true },
+        )
+        .lean(),
+    );
+    if (!row) throw new NotFoundException();
+    return toSavingsGoalResponse(row);
   }
-
   async remove(id: string): Promise<{ deleted: boolean }> {
-    try {
-      if (Types.ObjectId.isValid(id)) {
-        const deleted = await this.savingsGoalModel.findByIdAndDelete(id).lean();
-        if (deleted) return { deleted: true };
-      }
-    } catch {
-      // Fallback
-    }
+    const userId = currentOwner();
+    if (!Types.ObjectId.isValid(id)) throw new NotFoundException();
+    const row = await this.db(() =>
+      this.model.findOneAndDelete({ _id: id, userId }).lean(),
+    );
+    if (!row) throw new NotFoundException();
+    return { deleted: true };
+  }
 
-    const index = this.inMemoryGoals.findIndex((g) => g.id === id);
-    if (index !== -1) {
-      this.inMemoryGoals.splice(index, 1);
-      return { deleted: true };
-    }
-
-    throw new NotFoundException(`Savings goal with id ${id} not found`);
+  async updateVerified(
+    id: string,
+    dto: UpdateSavingsGoalDto,
+    ownerAddress: string,
+  ): Promise<SavingsGoalResponse> {
+    const row = await this.db(() =>
+      this.model
+        .findOneAndUpdate(
+          { _id: id, ownerAddress },
+          { $set: dto },
+          { new: true, runValidators: true },
+        )
+        .lean(),
+    );
+    if (!row) throw new NotFoundException();
+    return toSavingsGoalResponse(row);
   }
 }

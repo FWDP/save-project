@@ -1,18 +1,33 @@
+import { getAuthUser } from '@/lib/auth';
 import { useEffect, useState } from 'react';
-import { Alert, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import { FinancePage, financePageStyles as styles } from '@/components/layout/finance-page';
+import {
+  Alert,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
+import {
+  FinancePage,
+  financePageStyles as styles,
+} from '@/components/layout/finance-page';
 
 const STORAGE_KEY = 'save_custom_fields_v1';
 const DEFAULT_FIELDS = ['Project', 'Client', 'Tax ID', 'Invoice #'];
 
 async function loadSavedFields(): Promise<string[]> {
   try {
+    const user = await getAuthUser();
+    if (!user) throw new Error('Sign in first');
+    const storageKey = `${STORAGE_KEY}_${user.id}`;
     if (Platform.OS === 'web') {
-      const raw = window.localStorage.getItem(STORAGE_KEY);
+      const raw = window.localStorage.getItem(storageKey);
       return raw ? JSON.parse(raw) : DEFAULT_FIELDS;
     }
     const { getItemAsync } = await import('expo-secure-store');
-    const raw = await getItemAsync(STORAGE_KEY);
+    const raw = await getItemAsync(storageKey);
     return raw ? JSON.parse(raw) : DEFAULT_FIELDS;
   } catch {
     return DEFAULT_FIELDS;
@@ -21,13 +36,16 @@ async function loadSavedFields(): Promise<string[]> {
 
 async function saveFields(fields: string[]) {
   try {
+    const user = await getAuthUser();
+    if (!user) throw new Error('Sign in first');
+    const storageKey = `${STORAGE_KEY}_${user.id}`;
     const raw = JSON.stringify(fields);
     if (Platform.OS === 'web') {
-      window.localStorage.setItem(STORAGE_KEY, raw);
+      window.localStorage.setItem(storageKey, raw);
       return;
     }
     const { setItemAsync } = await import('expo-secure-store');
-    await setItemAsync(STORAGE_KEY, raw);
+    await setItemAsync(storageKey, raw);
   } catch {
     // Ignore write errors
   }
@@ -51,22 +69,29 @@ export default function CustomFieldsScreen() {
   };
 
   const removeField = (fieldName: string) => {
-    Alert.alert('Remove custom field?', `Remove "${fieldName}" from custom fields list?`, [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Remove',
-        style: 'destructive',
-        onPress: () => {
-          const next = fields.filter((f) => f !== fieldName);
-          setFields(next);
-          void saveFields(next);
+    Alert.alert(
+      'Remove custom field?',
+      `Remove "${fieldName}" from custom fields list?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: () => {
+            const next = fields.filter((f) => f !== fieldName);
+            setFields(next);
+            void saveFields(next);
+          },
         },
-      },
-    ]);
+      ],
+    );
   };
 
   return (
-    <FinancePage title="Custom Fields" subtitle="Metadata and tags for financial records">
+    <FinancePage
+      title="Custom Fields"
+      subtitle="Metadata and tags for financial records"
+    >
       <View style={styles.card}>
         <Text style={styles.cardTitle}>Active Fields ({fields.length})</Text>
         {fields.map((field) => (
@@ -75,7 +100,8 @@ export default function CustomFieldsScreen() {
             <Pressable
               onPress={() => removeField(field)}
               hitSlop={8}
-              style={localStyles.removeButton}>
+              style={localStyles.removeButton}
+            >
               <Text style={localStyles.removeButtonText}>✕</Text>
             </Pressable>
           </View>
@@ -105,7 +131,8 @@ export default function CustomFieldsScreen() {
           <Text style={styles.primaryButtonText}>Add Custom Field</Text>
         </Pressable>
         <Text style={styles.rowMeta}>
-          Custom fields appear as optional metadata inputs when creating expenses and income.
+          Custom fields appear as optional metadata inputs when creating
+          expenses and income.
         </Text>
       </View>
     </FinancePage>

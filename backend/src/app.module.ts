@@ -1,3 +1,4 @@
+import { WorkspacesModule } from './workspaces/workspaces.module';
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { MongooseModule } from '@nestjs/mongoose';
@@ -27,6 +28,7 @@ import { HealthController } from './health.controller';
       }),
       inject: [ConfigService],
     }),
+    WorkspacesModule,
     UsersModule,
     TransactionsModule,
     CategoriesModule,

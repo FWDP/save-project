@@ -1,12 +1,17 @@
-import { Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
+import { currentOwner } from '../auth/auth-context';
+import {
+  Injectable,
+  NotFoundException,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 
 import { CreateTransactionDto, UpdateTransactionDto } from './transactions.dto';
 import { Transaction, TransactionDocument } from './transaction.schema';
-import { DEMO_TRANSACTIONS } from '../seed/demo-data';
 
 export type TransactionResponse = {
+  clientMutationId?: string;
   id: string;
   userId: string;
   type: 'expense' | 'income';
@@ -26,6 +31,7 @@ function toTransactionResponse(doc: any): TransactionResponse {
   return {
     id: doc._id?.toString() ?? doc.id,
     userId: doc.userId,
+    clientMutationId: doc.clientMutationId,
     type: doc.type,
     amount: doc.amount,
     category: doc.category,
@@ -41,148 +47,79 @@ function toTransactionResponse(doc: any): TransactionResponse {
 }
 
 @Injectable()
-export class TransactionsService implements OnModuleInit {
-  private inMemoryTransactions: TransactionResponse[] = DEMO_TRANSACTIONS.map(toTransactionResponse);
-
-  constructor(@InjectModel(Transaction.name) private readonly transactionModel: Model<TransactionDocument>) {}
-
-  async onModuleInit() {
+export class TransactionsService {
+  constructor(
+    @InjectModel(Transaction.name)
+    private readonly model: Model<TransactionDocument>,
+  ) {}
+  private async db<T>(operation: () => PromiseLike<T>): Promise<T> {
     try {
-      const count = await this.transactionModel.countDocuments();
-      if (count === 0) {
-        await this.transactionModel.insertMany(
-          DEMO_TRANSACTIONS.map(
-            ({ type, amount, category, description, date, status, merchant, tags, recurring, receiptUri, customFields }) => ({
-              userId: 'usr_2',
-              type,
-              amount,
-              category,
-              description,
-              date,
-              status,
-              merchant,
-              tags,
-              recurring,
-              receiptUri,
-              customFields,
-            }),
-          ),
-        );
-      }
+      return await operation();
     } catch {
-      // Ignore if DB offline
+      throw new ServiceUnavailableException(
+        'Database unavailable. Please retry.',
+      );
     }
   }
-
   async findAll(): Promise<TransactionResponse[]> {
-    try {
-      const transactions = await this.transactionModel.find().sort({ date: -1, createdAt: -1 }).lean();
-      if (transactions.length > 0) return transactions.map(toTransactionResponse);
-    } catch {
-      // Fallback
-    }
-    return this.inMemoryTransactions;
+    const userId = currentOwner();
+    return (
+      await this.db(() =>
+        this.model.find({ userId }).sort({ createdAt: -1 }).lean(),
+      )
+    ).map(toTransactionResponse);
   }
-
   async findOne(id: string): Promise<TransactionResponse> {
-    try {
-      if (Types.ObjectId.isValid(id)) {
-        const transaction = await this.transactionModel.findById(id).lean();
-        if (transaction) return toTransactionResponse(transaction);
-      }
-    } catch {
-      // Fallback
-    }
-
-    const fallback = this.inMemoryTransactions.find((t) => t.id === id);
-    if (fallback) return fallback;
-
-    throw new NotFoundException(`Transaction with id ${id} not found`);
+    const userId = currentOwner();
+    if (!Types.ObjectId.isValid(id)) throw new NotFoundException();
+    const row = await this.db(() =>
+      this.model.findOne({ _id: id, userId }).lean(),
+    );
+    if (!row) throw new NotFoundException();
+    return toTransactionResponse(row);
   }
-
   async create(dto: CreateTransactionDto): Promise<TransactionResponse> {
-    try {
-      const transaction = new this.transactionModel({
-        userId: dto.userId,
-        type: dto.type,
-        amount: dto.amount,
-        category: dto.category,
-        description: dto.description,
-        date: dto.date,
-        status: dto.status ?? 'pending',
-        merchant: dto.merchant,
-        tags: dto.tags ?? [],
-        recurring: dto.recurring ?? false,
-        receiptUri: dto.receiptUri,
-        customFields: dto.customFields,
-      });
-      const saved = await transaction.save();
-      return toTransactionResponse(saved.toObject());
-    } catch {
-      const fallback: TransactionResponse = {
-        id: `txn_${Date.now()}`,
-        userId: dto.userId,
-        type: dto.type,
-        amount: dto.amount,
-        category: dto.category,
-        description: dto.description,
-        date: dto.date,
-        status: dto.status ?? 'pending',
-        merchant: dto.merchant,
-        tags: dto.tags ?? [],
-        recurring: dto.recurring ?? false,
-        receiptUri: dto.receiptUri,
-        customFields: dto.customFields,
-      };
-      this.inMemoryTransactions.unshift(fallback);
-      return fallback;
-    }
-  }
-
-  async update(id: string, dto: UpdateTransactionDto): Promise<TransactionResponse> {
-    try {
-      if (Types.ObjectId.isValid(id)) {
-        const updated = await this.transactionModel
-          .findByIdAndUpdate(
-            id,
-            { $set: Object.fromEntries(Object.entries(dto).filter(([, value]) => value !== undefined)) },
-            { new: true },
+    const userId = currentOwner();
+    if (dto.clientMutationId) {
+      const row = await this.db(() =>
+        this.model
+          .findOneAndUpdate(
+            { userId, clientMutationId: dto.clientMutationId },
+            { $setOnInsert: { ...dto, userId } },
+            { upsert: true, new: true, runValidators: true },
           )
-          .lean();
-        if (updated) return toTransactionResponse(updated);
-      }
-    } catch {
-      // Fallback
+          .lean(),
+      );
+      return toTransactionResponse(row);
     }
-
-    const index = this.inMemoryTransactions.findIndex((t) => t.id === id);
-    if (index !== -1) {
-      this.inMemoryTransactions[index] = {
-        ...this.inMemoryTransactions[index],
-        ...Object.fromEntries(Object.entries(dto).filter(([, value]) => value !== undefined)),
-      };
-      return this.inMemoryTransactions[index];
-    }
-
-    throw new NotFoundException(`Transaction with id ${id} not found`);
+    const row = await this.db(() => new this.model({ ...dto, userId }).save());
+    return toTransactionResponse(row.toObject());
   }
-
+  async update(
+    id: string,
+    dto: UpdateTransactionDto,
+  ): Promise<TransactionResponse> {
+    const userId = currentOwner();
+    if (!Types.ObjectId.isValid(id)) throw new NotFoundException();
+    const row = await this.db(() =>
+      this.model
+        .findOneAndUpdate(
+          { _id: id, userId },
+          { $set: { ...dto, userId } },
+          { new: true, runValidators: true },
+        )
+        .lean(),
+    );
+    if (!row) throw new NotFoundException();
+    return toTransactionResponse(row);
+  }
   async remove(id: string): Promise<{ deleted: boolean }> {
-    try {
-      if (Types.ObjectId.isValid(id)) {
-        const deleted = await this.transactionModel.findByIdAndDelete(id).lean();
-        if (deleted) return { deleted: true };
-      }
-    } catch {
-      // Fallback
-    }
-
-    const index = this.inMemoryTransactions.findIndex((t) => t.id === id);
-    if (index !== -1) {
-      this.inMemoryTransactions.splice(index, 1);
-      return { deleted: true };
-    }
-
-    throw new NotFoundException(`Transaction with id ${id} not found`);
+    const userId = currentOwner();
+    if (!Types.ObjectId.isValid(id)) throw new NotFoundException();
+    const row = await this.db(() =>
+      this.model.findOneAndDelete({ _id: id, userId }).lean(),
+    );
+    if (!row) throw new NotFoundException();
+    return { deleted: true };
   }
 }

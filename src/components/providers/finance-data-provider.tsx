@@ -1,116 +1,136 @@
+import { flushTransactions } from '@/lib/transaction-writes';
 import { AppState } from 'react-native';
-import { type PropsWithChildren, useCallback, useEffect, useRef } from 'react';
-
-import { fetchBudgets, fetchCategories, fetchTransactions, getApiBaseUrl } from '@/lib/api';
+import {
+  type PropsWithChildren,
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useRef,
+} from 'react';
+import { fetchBudgets, fetchCategories, fetchTransactions } from '@/lib/api';
 import {
   initializeDatabase,
-  loadCachedBudgets,
-  loadCachedCategories,
-  loadCachedTransactions,
-  saveBudgets,
-  saveCategories,
-  saveTransactions,
+  loadAccountCache,
+  saveAccountCache,
+  clearPrivateCache,
+  pendingTransactions,
 } from '@/lib/sqlite';
 import { useFinanceStore } from '@/store/finance-store';
 
-const REFRESH_INTERVAL_MS = 30_000;
-
-export function FinanceDataProvider({ children }: PropsWithChildren) {
-  const isRefreshing = useRef(false);
-  const {
-    setBudgets,
-    setCategories,
-    setLoading,
-    setSyncState,
-    setTransactions,
-  } = useFinanceStore();
-
+const RefreshContext = createContext<() => Promise<void>>(async () => {});
+export const useRefreshFinance = () => useContext(RefreshContext);
+export function FinanceDataProvider({
+  children,
+  userId,
+}: PropsWithChildren<{ userId: string | null }>) {
+  const busy = useRef(false);
+  const active = useRef(true);
   const refresh = useCallback(async () => {
-    if (isRefreshing.current) return;
-    isRefreshing.current = true;
-
+    if (!userId || busy.current) return;
+    busy.current = true;
+    useFinanceStore.getState().setLoading(true);
     try {
-      const baseUrl = getApiBaseUrl();
-      console.log(`[FinanceDataProvider] Syncing data from API: ${baseUrl}`);
-
-      const [transactionsResult, budgetsResult, categoriesResult] = await Promise.allSettled([
+      await flushTransactions(userId);
+      if (!active.current) return;
+      const initial = useFinanceStore.getState();
+      // Apply one coherent snapshot; partial results must not mix periods or budgets.
+      const [transactions, budgets, categories] = await Promise.all([
         fetchTransactions(),
         fetchBudgets(),
         fetchCategories(),
       ]);
-
-      const failures: string[] = [];
-      if (transactionsResult.status === 'fulfilled') {
-        setTransactions(transactionsResult.value);
-        try {
-          saveTransactions(transactionsResult.value);
-        } catch (err) {
-          console.warn('[FinanceDataProvider] Failed to cache transactions in SQLite:', err);
-        }
-      } else {
-        failures.push('transactions');
-        console.warn('[FinanceDataProvider] Error fetching transactions:', transactionsResult.reason);
+      if (
+        !active.current ||
+        useFinanceStore.getState().transactions !== initial.transactions ||
+        useFinanceStore.getState().budgets !== initial.budgets ||
+        useFinanceStore.getState().categories !== initial.categories
+      )
+        return;
+      const state = useFinanceStore.getState();
+      state.setTransactions([...pendingTransactions(userId), ...transactions]);
+      state.setBudgets(budgets);
+      state.setCategories(categories);
+      try {
+        saveAccountCache(userId, { transactions, budgets, categories });
+      } catch {
+        /* Live data remains available. */
       }
-
-      if (budgetsResult.status === 'fulfilled') {
-        setBudgets(budgetsResult.value);
+      state.setSyncState(null, new Date().toISOString());
+    } catch {
+      if (active.current) {
+        const state = useFinanceStore.getState();
+        let pending: ReturnType<typeof pendingTransactions> = [];
         try {
-          saveBudgets(budgetsResult.value);
-        } catch (err) {
-          console.warn('[FinanceDataProvider] Failed to cache budgets in SQLite:', err);
+          pending = pendingTransactions(userId);
+        } catch {
+          pending = state.transactions.filter(
+            (item) => item.syncState === 'pending',
+          );
         }
-      } else {
-        failures.push('budgets');
-        console.warn('[FinanceDataProvider] Error fetching budgets:', budgetsResult.reason);
+        const current = state.transactions.filter(
+          (item) => item.syncState !== 'pending',
+        );
+        state.setTransactions([...pending, ...current]);
+        state.setSyncState(
+          pending.length
+            ? `${pending.length} transaction(s) saved on this device, awaiting upload. Retry when connected.`
+            : 'Could not sync. Showing your last loaded data.',
+          state.lastUpdatedAt,
+        );
       }
-
-      if (categoriesResult.status === 'fulfilled') {
-        setCategories(categoriesResult.value);
-        try {
-          saveCategories(categoriesResult.value);
-        } catch (err) {
-          console.warn('[FinanceDataProvider] Failed to cache categories in SQLite:', err);
-        }
-      } else {
-        failures.push('categories');
-        console.warn('[FinanceDataProvider] Error fetching categories:', categoriesResult.reason);
-      }
-
-      setSyncState(
-        failures.length ? `Offline cache: ${failures.join(' and ')} unavailable` : null,
-        new Date().toISOString(),
-      );
     } finally {
-      setLoading(false);
-      isRefreshing.current = false;
+      if (active.current) useFinanceStore.getState().setLoading(false);
+      busy.current = false;
     }
-  }, [setBudgets, setCategories, setLoading, setSyncState, setTransactions]);
-
+  }, [userId]);
   useEffect(() => {
+    active.current = true;
     try {
       initializeDatabase();
-      const cachedTxns = loadCachedTransactions();
-      if (cachedTxns?.length) setTransactions(cachedTxns);
-      const cachedBudgets = loadCachedBudgets();
-      if (cachedBudgets?.length) setBudgets(cachedBudgets);
-      const cachedCats = loadCachedCategories();
-      if (cachedCats?.length) setCategories(cachedCats);
-    } catch (err) {
-      console.warn('[FinanceDataProvider] Failed initial SQLite load:', err);
+      if (!userId) clearPrivateCache();
+      else {
+        const cached = loadAccountCache(userId);
+        if (cached) {
+          const state = useFinanceStore.getState();
+          state.setTransactions(cached.transactions);
+          state.setBudgets(cached.budgets);
+          state.setCategories(cached.categories);
+        }
+      }
+    } catch {
+      /* An unavailable cache must not prevent a network refresh. */
     }
-
+    const unsubscribe = useFinanceStore.subscribe((state) => {
+      if (userId && active.current) {
+        try {
+          saveAccountCache(userId, {
+            transactions: state.transactions,
+            budgets: state.budgets,
+            categories: state.categories,
+          });
+        } catch {
+          /* Cache is optional. */
+        }
+      }
+    });
     void refresh();
-
-    const interval = setInterval(() => void refresh(), REFRESH_INTERVAL_MS);
-    const subscription = AppState.addEventListener('change', (state) => {
+    const interval = setInterval(() => {
+      if (AppState.currentState === 'active') void refresh();
+    }, 30_000);
+    const listener = AppState.addEventListener('change', (state) => {
       if (state === 'active') void refresh();
     });
-
     return () => {
+      active.current = false;
+      unsubscribe();
       clearInterval(interval);
-      subscription.remove();
+      listener.remove();
     };
-  }, [refresh, setBudgets, setCategories, setTransactions]);
-
-  return children;
+  }, [refresh, userId]);
+  return (
+    <RefreshContext.Provider value={refresh}>
+      {children}
+    </RefreshContext.Provider>
+  );
 }

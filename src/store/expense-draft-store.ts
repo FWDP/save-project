@@ -1,3 +1,4 @@
+import { localDate } from '@/lib/finance';
 import { create } from 'zustand';
 
 export type ExpenseDraft = {
@@ -15,7 +16,7 @@ export type ExpenseDraft = {
 
 const initialDraft = (): ExpenseDraft => ({
   type: 'expense',
-  date: new Date().toISOString().slice(0, 10),
+  date: localDate(),
   amount: '',
   category: '',
   description: '',
@@ -33,6 +34,7 @@ type ExpenseDraftStore = {
 
 export const useExpenseDraftStore = create<ExpenseDraftStore>((set) => ({
   draft: initialDraft(),
-  patchDraft: (patch) => set((state) => ({ draft: { ...state.draft, ...patch } })),
+  patchDraft: (patch) =>
+    set((state) => ({ draft: { ...state.draft, ...patch } })),
   resetDraft: () => set({ draft: initialDraft() }),
 }));

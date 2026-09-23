@@ -1,7 +1,10 @@
+import { accessToken } from './auth';
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 
 export type ApiTransaction = {
+  clientMutationId?: string;
+  syncState?: 'pending';
   id: string;
   userId: string;
   type: 'expense' | 'income';
@@ -33,7 +36,8 @@ export type ApiCategory = {
   color: string;
 };
 
-export type ApiSavingsGoalStatus = 'draft' | 'pending' | 'active' | 'completed' | 'withdrawn' | 'cancelled';
+export type ApiSavingsGoalStatus =
+  'draft' | 'pending' | 'active' | 'completed' | 'withdrawn' | 'cancelled';
 
 export type ApiSavingsGoal = {
   id: string;
@@ -70,7 +74,12 @@ export type StellarNetworkStatus = {
 export type StellarPortfolio = {
   address: string;
   sequence: string;
-  balances: { asset: string; issuer?: string; balance: string; assetType: string }[];
+  balances: {
+    asset: string;
+    issuer?: string;
+    balance: string;
+    assetType: string;
+  }[];
   subentryCount: number;
   lastModifiedLedger: number;
   explorerUrl: string;
@@ -169,12 +178,26 @@ export function getApiBaseUrl(): string {
   return 'http://localhost:3000';
 }
 
+async function apiFetch(url: string, options?: RequestInit) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 30_000);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 export async function fetchTransactions(): Promise<ApiTransaction[]> {
   const url = `${getApiBaseUrl()}/transactions`;
-  const response = await fetch(url);
+  const response = await apiFetch(url, {
+    headers: { Authorization: `Bearer ${await accessToken()}` },
+  });
 
   if (!response.ok) {
-    throw new Error(`Unable to load transactions from ${url} (HTTP ${response.status})`);
+    throw new Error(
+      `Unable to load transactions from ${url} (HTTP ${response.status})`,
+    );
   }
 
   return response.json() as Promise<ApiTransaction[]>;
@@ -182,10 +205,14 @@ export async function fetchTransactions(): Promise<ApiTransaction[]> {
 
 export async function fetchBudgets(): Promise<ApiBudget[]> {
   const url = `${getApiBaseUrl()}/budgets`;
-  const response = await fetch(url);
+  const response = await apiFetch(url, {
+    headers: { Authorization: `Bearer ${await accessToken()}` },
+  });
 
   if (!response.ok) {
-    throw new Error(`Unable to load budgets from ${url} (HTTP ${response.status})`);
+    throw new Error(
+      `Unable to load budgets from ${url} (HTTP ${response.status})`,
+    );
   }
 
   return response.json() as Promise<ApiBudget[]>;
@@ -193,10 +220,14 @@ export async function fetchBudgets(): Promise<ApiBudget[]> {
 
 export async function fetchCategories(): Promise<ApiCategory[]> {
   const url = `${getApiBaseUrl()}/categories`;
-  const response = await fetch(url);
+  const response = await apiFetch(url, {
+    headers: { Authorization: `Bearer ${await accessToken()}` },
+  });
 
   if (!response.ok) {
-    throw new Error(`Unable to load categories from ${url} (HTTP ${response.status})`);
+    throw new Error(
+      `Unable to load categories from ${url} (HTTP ${response.status})`,
+    );
   }
 
   return response.json() as Promise<ApiCategory[]>;
@@ -205,8 +236,13 @@ export async function fetchCategories(): Promise<ApiCategory[]> {
 async function apiError(response: Response, path: string) {
   let detail = '';
   try {
-    const body = await response.json() as { message?: string | string[]; error?: string };
-    detail = Array.isArray(body.message) ? body.message.join(', ') : body.message ?? body.error ?? '';
+    const body = (await response.json()) as {
+      message?: string | string[];
+      error?: string;
+    };
+    detail = Array.isArray(body.message)
+      ? body.message.join(', ')
+      : (body.message ?? body.error ?? '');
   } catch {
     // Some upstream/proxy failures do not return JSON.
   }
@@ -217,16 +253,21 @@ async function apiError(response: Response, path: string) {
 
 async function postJson<T>(path: string, payload: unknown): Promise<T> {
   const url = `${getApiBaseUrl()}${path}`;
-  const response = await fetch(url, {
+  const response = await apiFetch(url, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${await accessToken()}`,
+    },
     body: JSON.stringify(payload),
   });
   if (!response.ok) throw await apiError(response, path);
   return response.json() as Promise<T>;
 }
 
-export function createBudget(payload: Omit<ApiBudget, 'id' | 'spent'> & { spent?: number }) {
+export function createBudget(
+  payload: Omit<ApiBudget, 'id' | 'spent'> & { spent?: number },
+) {
   return postJson<ApiBudget>('/budgets', payload);
 }
 
@@ -234,18 +275,31 @@ export function createCategory(payload: Omit<ApiCategory, 'id'>) {
   return postJson<ApiCategory>('/categories', payload);
 }
 
-async function mutateJson<T>(path: string, method: 'PATCH' | 'DELETE', payload?: unknown): Promise<T> {
+async function mutateJson<T>(
+  path: string,
+  method: 'PATCH' | 'DELETE',
+  payload?: unknown,
+): Promise<T> {
   const url = `${getApiBaseUrl()}${path}`;
-  const response = await fetch(url, {
+  const response = await apiFetch(url, {
     method,
-    headers: payload ? { 'Content-Type': 'application/json' } : undefined,
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${await accessToken()}`,
+    },
     body: payload ? JSON.stringify(payload) : undefined,
   });
-  if (!response.ok) throw new Error(`SAVE API request failed: ${url} (HTTP ${response.status})`);
+  if (!response.ok)
+    throw new Error(
+      `SAVE API request failed: ${url} (HTTP ${response.status})`,
+    );
   return response.json() as Promise<T>;
 }
 
-export function updateCategory(id: string, payload: Partial<Omit<ApiCategory, 'id'>>) {
+export function updateCategory(
+  id: string,
+  payload: Partial<Omit<ApiCategory, 'id'>>,
+) {
   return mutateJson<ApiCategory>(`/categories/${id}`, 'PATCH', payload);
 }
 
@@ -259,23 +313,37 @@ export function deleteTransaction(id: string) {
 
 export async function fetchSavingsGoals(): Promise<ApiSavingsGoal[]> {
   const url = `${getApiBaseUrl()}/savings-goals`;
-  const response = await fetch(url);
-  if (!response.ok) throw new Error(`Unable to load savings goals from ${url} (HTTP ${response.status})`);
+  const response = await apiFetch(url, {
+    headers: { Authorization: `Bearer ${await accessToken()}` },
+  });
+  if (!response.ok)
+    throw new Error(
+      `Unable to load savings goals from ${url} (HTTP ${response.status})`,
+    );
   return response.json() as Promise<ApiSavingsGoal[]>;
 }
 
 export async function fetchSavingsGoal(id: string): Promise<ApiSavingsGoal> {
   const url = `${getApiBaseUrl()}/savings-goals/${id}`;
-  const response = await fetch(url);
-  if (!response.ok) throw new Error(`Unable to load savings goal ${id} from ${url}`);
+  const response = await apiFetch(url, {
+    headers: { Authorization: `Bearer ${await accessToken()}` },
+  });
+  if (!response.ok)
+    throw new Error(`Unable to load savings goal ${id} from ${url}`);
   return response.json() as Promise<ApiSavingsGoal>;
 }
 
-export function createSavingsGoal(payload: Partial<Omit<ApiSavingsGoal, 'id'>> & Pick<ApiSavingsGoal, 'name' | 'targetAmount'>) {
+export function createSavingsGoal(
+  payload: Partial<Omit<ApiSavingsGoal, 'id'>> &
+    Pick<ApiSavingsGoal, 'name' | 'targetAmount'>,
+) {
   return postJson<ApiSavingsGoal>('/savings-goals', payload);
 }
 
-export function updateSavingsGoal(id: string, payload: Partial<Omit<ApiSavingsGoal, 'id'>>) {
+export function updateSavingsGoal(
+  id: string,
+  payload: Partial<Omit<ApiSavingsGoal, 'id'>>,
+) {
   return mutateJson<ApiSavingsGoal>(`/savings-goals/${id}`, 'PATCH', payload);
 }
 
@@ -284,7 +352,9 @@ export function deleteSavingsGoal(id: string) {
 }
 
 async function getJson<T>(path: string): Promise<T> {
-  const response = await fetch(`${getApiBaseUrl()}${path}`);
+  const response = await apiFetch(`${getApiBaseUrl()}${path}`, {
+    headers: { Authorization: `Bearer ${await accessToken()}` },
+  });
   if (!response.ok) throw await apiError(response, path);
   return response.json() as Promise<T>;
 }
@@ -298,20 +368,41 @@ export function linkStellarAccount(address: string) {
 }
 
 export function fetchStellarPortfolio(address: string) {
-  return getJson<StellarPortfolio>(`/stellar/accounts/${encodeURIComponent(address)}`);
+  return getJson<StellarPortfolio>(
+    `/stellar/accounts/${encodeURIComponent(address)}`,
+  );
 }
 
 export function fetchStellarPayments(address: string) {
-  return getJson<{ id: string; type: string; from?: string; to?: string; amount?: string; asset?: string; transactionHash: string; createdAt: string; explorerUrl: string }[]>(`/stellar/accounts/${encodeURIComponent(address)}/payments?limit=10`);
+  return getJson<
+    {
+      id: string;
+      type: string;
+      from?: string;
+      to?: string;
+      amount?: string;
+      asset?: string;
+      transactionHash: string;
+      createdAt: string;
+      explorerUrl: string;
+    }[]
+  >(`/stellar/accounts/${encodeURIComponent(address)}/payments?limit=10`);
 }
 
-export function prepareStellarPayment(payload: { source: string; destination: string; amount: string; memo?: string; idempotencyKey: string }) {
+export function prepareStellarPayment(payload: {
+  source: string;
+  destination: string;
+  amount: string;
+  memo?: string;
+  idempotencyKey: string;
+}) {
   return postJson<StellarSigningRequest>('/stellar/payments/prepare', payload);
 }
 
 export function prepareVaultInvocation(payload: {
   source: string;
-  action: 'create_goal' | 'contribute' | 'complete_goal' | 'withdraw' | 'cancel_goal';
+  action:
+    'create_goal' | 'contribute' | 'complete_goal' | 'withdraw' | 'cancel_goal';
   idempotencyKey: string;
   owner?: string;
   contributor?: string;
@@ -326,11 +417,15 @@ export function prepareVaultInvocation(payload: {
 }
 
 export function fetchVaultGoals(owner: string) {
-  return getJson<StellarVaultGoalsResponse>(`/stellar/vault/goals/${encodeURIComponent(owner)}`);
+  return getJson<StellarVaultGoalsResponse>(
+    `/stellar/vault/goals/${encodeURIComponent(owner)}`,
+  );
 }
 
 export function fetchStellarSigningRequest(idempotencyKey: string) {
-  return getJson<StellarSigningRequest>(`/stellar/signing-requests/${encodeURIComponent(idempotencyKey)}`);
+  return getJson<StellarSigningRequest>(
+    `/stellar/signing-requests/${encodeURIComponent(idempotencyKey)}`,
+  );
 }
 
 export function submitStellarTransaction(payload: {
@@ -338,20 +433,46 @@ export function submitStellarTransaction(payload: {
   kind: 'classic' | 'soroban';
   idempotencyKey: string;
 }) {
-  return postJson<StellarTransactionSubmission>('/stellar/transactions/submit', payload);
+  return postJson<StellarTransactionSubmission>(
+    '/stellar/transactions/submit',
+    payload,
+  );
 }
 
-export async function createTransaction(payload: Omit<ApiTransaction, 'id'>): Promise<ApiTransaction> {
+export async function createTransaction(
+  payload: Omit<ApiTransaction, 'id'>,
+): Promise<ApiTransaction> {
   const url = `${getApiBaseUrl()}/transactions`;
-  const response = await fetch(url, {
+  const response = await apiFetch(url, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${await accessToken(payload.userId)}`,
+    },
     body: JSON.stringify(payload),
   });
 
   if (!response.ok) {
-    throw new Error(`Unable to save transaction to ${url} (HTTP ${response.status})`);
+    throw new Error(
+      `Unable to save transaction to ${url} (HTTP ${response.status})`,
+    );
   }
 
   return response.json() as Promise<ApiTransaction>;
+}
+
+export function updateTransaction(
+  id: string,
+  payload: Partial<Omit<ApiTransaction, 'id' | 'userId'>>,
+) {
+  return mutateJson<ApiTransaction>(`/transactions/${id}`, 'PATCH', payload);
+}
+export function updateBudget(
+  id: string,
+  payload: Partial<Pick<ApiBudget, 'category' | 'limit' | 'period'>>,
+) {
+  return mutateJson<ApiBudget>(`/budgets/${id}`, 'PATCH', payload);
+}
+export function deleteBudget(id: string) {
+  return mutateJson<{ deleted: boolean }>(`/budgets/${id}`, 'DELETE');
 }

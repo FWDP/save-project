@@ -1,8 +1,21 @@
+import { DateField } from '@/components/date-field';
+import { validDate } from '@/lib/finance';
 import { useCallback, useEffect, useState } from 'react';
-import { Alert, Linking, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import {
+  Alert,
+  Linking,
+  Pressable,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import { useRouter } from 'expo-router';
 
-import { FinancePage, financePageStyles as styles } from '@/components/layout/finance-page';
+import {
+  FinancePage,
+  financePageStyles as styles,
+} from '@/components/layout/finance-page';
 import {
   createSavingsGoal,
   deleteSavingsGoal,
@@ -14,6 +27,9 @@ export default function SavingsScreen() {
   const router = useRouter();
   const [goals, setGoals] = useState<ApiSavingsGoal[]>([]);
   const [loading, setLoading] = useState(true);
+  const [creating, setCreating] = useState(false);
+  const [showForm, setShowForm] = useState(false);
+  const [kind, setKind] = useState<'trackers' | 'vaults'>('trackers');
   const [form, setForm] = useState({
     name: '',
     targetAmount: '',
@@ -57,12 +73,20 @@ export default function SavingsScreen() {
   }, []);
 
   const create = async () => {
+    if (creating) return;
+    if (form.targetDate && !validDate(form.targetDate))
+      return setMessage('Choose a valid target date.');
     const targetAmount = Number(form.targetAmount);
-    if (!form.name.trim() || !Number.isFinite(targetAmount) || targetAmount <= 0) {
+    if (
+      !form.name.trim() ||
+      !Number.isFinite(targetAmount) ||
+      targetAmount <= 0
+    ) {
       return setMessage('Enter a valid goal name and positive target amount.');
     }
 
     try {
+      setCreating(true);
       const goal = await createSavingsGoal({
         name: form.name.trim(),
         targetAmount,
@@ -75,219 +99,312 @@ export default function SavingsScreen() {
       setForm({ name: '', targetAmount: '', targetDate: '', asset: 'XLM' });
       setMessage(null);
     } catch {
-      setMessage('Failed to create savings goal. API unavailable.');
+      setMessage('Failed to create savings goal. Please retry.');
+    } finally {
+      setCreating(false);
     }
   };
 
   const removeGoal = (id: string, name: string) => {
-    Alert.alert('Delete savings goal?', `Are you sure you want to delete "${name}"?`, [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            await deleteSavingsGoal(id);
-            setGoals((prev) => prev.filter((g) => g.id !== id));
-          } catch {
-            Alert.alert('Error', 'Failed to delete goal.');
-          }
+    Alert.alert(
+      'Delete savings goal?',
+      `Are you sure you want to delete "${name}"?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await deleteSavingsGoal(id);
+              setGoals((prev) => prev.filter((g) => g.id !== id));
+            } catch {
+              Alert.alert('Error', 'Failed to delete goal.');
+            }
+          },
         },
-      },
-    ]);
+      ],
+    );
   };
 
   return (
     <FinancePage
       title="Savings Goals"
-      subtitle="Smart contracts and off-chain vaults on Stellar testnet">
+      subtitle="Track a goal or connect a Stellar Testnet vault"
+    >
+      <Pressable
+        style={styles.primaryButton}
+        onPress={() => setShowForm(!showForm)}
+      >
+        <Text style={styles.primaryButtonText}>
+          {showForm ? 'Close goal form' : 'Create savings goal'}
+        </Text>
+      </Pressable>
+      {showForm && (
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>New XLM Testnet tracker</Text>
+          <TextInput
+            accessibilityLabel="Goal name"
+            style={localStyles.input}
+            placeholder="Goal name"
+            placeholderTextColor="#a1afc3"
+            value={form.name}
+            onChangeText={(name) => setForm({ ...form, name })}
+          />
+          <TextInput
+            accessibilityLabel="Target amount in XLM"
+            style={localStyles.input}
+            keyboardType="decimal-pad"
+            placeholder="Target amount (XLM)"
+            placeholderTextColor="#a1afc3"
+            value={form.targetAmount}
+            onChangeText={(targetAmount) => setForm({ ...form, targetAmount })}
+          />
+          <DateField
+            label="Target date (optional)"
+            value={form.targetDate}
+            onChange={(targetDate) => setForm({ ...form, targetDate })}
+          />
+          <Text style={styles.rowMeta}>
+            A tracker does not hold funds. You can connect a Testnet vault after
+            creating it.
+          </Text>
+          <Pressable
+            disabled={creating}
+            style={styles.primaryButton}
+            onPress={create}
+          >
+            <Text style={styles.primaryButtonText}>
+              {creating ? 'Creating…' : 'Create tracker'}
+            </Text>
+          </Pressable>
+        </View>
+      )}
+      {message ? <Text style={{ color: '#ff8195' }}>{message}</Text> : null}
+      <View style={{ flexDirection: 'row', gap: 12 }}>
+        {(['trackers', 'vaults'] as const).map((value) => (
+          <Pressable
+            key={value}
+            accessibilityState={{ selected: value === kind }}
+            style={{
+              padding: 14,
+              backgroundColor: kind === value ? '#264b78' : '#111c31',
+              borderRadius: 10,
+            }}
+            onPress={() => setKind(value)}
+          >
+            <Text style={{ color: '#f4f7fb' }}>
+              {value === 'trackers' ? 'Trackers' : 'Testnet vaults'}
+            </Text>
+          </Pressable>
+        ))}
+      </View>
       <View style={localStyles.stellarBanner}>
-        <View style={{ flex: 1 }}><Text style={localStyles.stellarTitle}>Stellar Testnet vault</Text><Text style={styles.rowMeta}>Link a watch-only account and prepare externally signed Soroban transactions.</Text></View>
-        <Pressable style={localStyles.stellarButton} onPress={() => router.push('/stellar')}><Text style={localStyles.stellarButtonText}>Open</Text></Pressable>
+        <View style={{ flex: 1 }}>
+          <Text style={localStyles.stellarTitle}>Stellar Testnet vault</Text>
+          <Text style={styles.rowMeta}>
+            Link a watch-only account and prepare externally signed Soroban
+            transactions.
+          </Text>
+        </View>
+        <Pressable
+          style={localStyles.stellarButton}
+          onPress={() => router.push('/stellar')}
+        >
+          <Text style={localStyles.stellarButtonText}>Open</Text>
+        </Pressable>
       </View>
       <View style={styles.card}>
         <View style={localStyles.headerRow}>
-          <Text style={styles.cardTitle}>Active Goals ({goals.length})</Text>
+          <Text style={styles.cardTitle}>
+            {kind === 'trackers' ? 'Savings trackers' : 'Linked vaults'}
+          </Text>
           <Pressable onPress={loadGoals} style={localStyles.refreshButton}>
-            <Text style={localStyles.refreshText}>{loading ? 'Refreshing…' : '↻ Refresh'}</Text>
+            <Text style={localStyles.refreshText}>
+              {loading ? 'Refreshing…' : '↻ Refresh'}
+            </Text>
           </Pressable>
         </View>
 
-        {goals.map((goal) => {
-          const percent = Math.min(
-            Math.round(((goal.fundedAmount || 0) / Math.max(goal.targetAmount, 1)) * 100),
-            100,
-          );
-          const hasOnChainGoal = Boolean(goal.contractId && goal.vaultGoalId);
-          const hasOnChainProof = Boolean(hasOnChainGoal && goal.transactionHash);
-          const canFundOnChain = hasOnChainGoal && goal.status !== 'cancelled' && goal.status !== 'withdrawn';
-          const openVaultGoal = () => router.push({
-            pathname: '/stellar',
-            params: {
-              savingsGoalId: goal.id,
-              goalName: goal.name,
-              targetAmount: String(goal.targetAmount),
-              targetDate: goal.targetDate,
-              vaultGoalId: canFundOnChain ? goal.vaultGoalId : undefined,
-            },
-          });
+        {goals
+          .filter(
+            (goal) =>
+              Boolean(goal.contractId && goal.vaultGoalId) ===
+              (kind === 'vaults'),
+          )
+          .map((goal) => {
+            const percent = Math.min(
+              Math.round(
+                ((goal.fundedAmount || 0) / Math.max(goal.targetAmount, 1)) *
+                  100,
+              ),
+              100,
+            );
+            const hasOnChainGoal = Boolean(goal.contractId && goal.vaultGoalId);
+            const hasOnChainProof = Boolean(
+              hasOnChainGoal && goal.transactionHash,
+            );
+            const canFundOnChain =
+              hasOnChainGoal &&
+              goal.status !== 'cancelled' &&
+              goal.status !== 'withdrawn';
+            const openVaultGoal = () =>
+              router.push({
+                pathname: '/stellar',
+                params: {
+                  savingsGoalId: goal.id,
+                  goalName: goal.name,
+                  targetAmount: String(goal.targetAmount),
+                  targetDate: goal.targetDate,
+                  vaultGoalId: canFundOnChain ? goal.vaultGoalId : undefined,
+                },
+              });
 
-          return (
-            <View key={goal.id} style={localStyles.goalCard}>
-              <View style={styles.rowTop}>
-                <View style={localStyles.goalTitleWrap}>
-                  <Text style={styles.rowTitle}>{goal.name}</Text>
-                  <View style={localStyles.badgeRow}>
-                    <View style={localStyles.statusBadge}>
-                      <Text style={localStyles.statusBadgeText}>{goal.status.toUpperCase()}</Text>
-                    </View>
-                    <View style={localStyles.assetBadge}>
-                      <Text style={localStyles.assetBadgeText}>{goal.asset}</Text>
+            return (
+              <View key={goal.id} style={localStyles.goalCard}>
+                <View style={styles.rowTop}>
+                  <View style={localStyles.goalTitleWrap}>
+                    <Text style={styles.rowTitle}>{goal.name}</Text>
+                    <View style={localStyles.badgeRow}>
+                      <View style={localStyles.statusBadge}>
+                        <Text style={localStyles.statusBadgeText}>
+                          {goal.status.toUpperCase()}
+                        </Text>
+                      </View>
+                      <View style={localStyles.assetBadge}>
+                        <Text style={localStyles.assetBadgeText}>
+                          {goal.asset}
+                        </Text>
+                      </View>
                     </View>
                   </View>
+                  <Pressable
+                    onPress={() => removeGoal(goal.id, goal.name)}
+                    hitSlop={8}
+                    style={localStyles.deleteButton}
+                  >
+                    <Text style={localStyles.deleteButtonText}>✕</Text>
+                  </Pressable>
                 </View>
-                <Pressable
-                  onPress={() => removeGoal(goal.id, goal.name)}
-                  hitSlop={8}
-                  style={localStyles.deleteButton}>
-                  <Text style={localStyles.deleteButtonText}>✕</Text>
-                </Pressable>
-              </View>
 
-              <View style={localStyles.amountRow}>
-                <Text style={localStyles.fundedText}>
-                  {goal.fundedAmount.toLocaleString('en-US')} / {goal.targetAmount.toLocaleString('en-US')} {goal.asset}
-                </Text>
-                <Text style={localStyles.percentText}>{percent}% funded</Text>
-              </View>
-
-              <View style={localStyles.progressTrack}>
-                <View style={[localStyles.progressFill, { width: `${percent}%` }]} />
-              </View>
-
-              <View style={localStyles.metaRow}>
-                <Text style={styles.rowMeta}>
-                  {goal.targetDate ? `Target: ${goal.targetDate}` : 'No deadline'} · Stellar {goal.network ?? 'testnet'}
-                </Text>
-                {goal.contractId ? (
-                  <Text numberOfLines={1} style={localStyles.contractText}>
-                    Vault: {goal.contractId.slice(0, 8)}...
+                <View style={localStyles.amountRow}>
+                  <Text style={localStyles.fundedText}>
+                    {goal.fundedAmount.toLocaleString('en-US')} /{' '}
+                    {goal.targetAmount.toLocaleString('en-US')} {goal.asset}
                   </Text>
-                ) : (
-                  <Text style={localStyles.draftNote}>Off-chain draft</Text>
-                )}
-              </View>
+                  <Text style={localStyles.percentText}>{percent}% funded</Text>
+                </View>
 
-              <View
-                style={[
-                  localStyles.fundingState,
-                  hasOnChainProof ? localStyles.fundingVerified : localStyles.fundingDraft,
-                ]}>
-                <Text
-                  style={
+                <View style={localStyles.progressTrack}>
+                  <View
+                    style={[localStyles.progressFill, { width: `${percent}%` }]}
+                  />
+                </View>
+
+                <View style={localStyles.metaRow}>
+                  <Text style={styles.rowMeta}>
+                    {goal.targetDate
+                      ? `Target: ${goal.targetDate}`
+                      : 'No deadline'}{' '}
+                    · Stellar {goal.network ?? 'testnet'}
+                  </Text>
+                  {goal.contractId ? (
+                    <Text numberOfLines={1} style={localStyles.contractText}>
+                      Vault: {goal.contractId.slice(0, 8)}...
+                    </Text>
+                  ) : (
+                    <Text style={localStyles.draftNote}>Off-chain draft</Text>
+                  )}
+                </View>
+
+                <View
+                  style={[
+                    localStyles.fundingState,
                     hasOnChainProof
-                      ? localStyles.fundingVerifiedTitle
-                      : localStyles.fundingDraftTitle
-                  }>
-                  {hasOnChainGoal ? '✓ Linked to a specific Stellar vault goal' : 'Tracker only · no funds held'}
-                </Text>
-                <Text style={localStyles.fundingStateText}>
-                  {hasOnChainGoal
-                    ? `Vault Goal #${goal.vaultGoalId} · ${goal.fundedAmount.toLocaleString('en-US')} ${goal.asset} verified on-chain.`
-                    : 'Saving this tracker does not transfer XLM. Create its dedicated Stellar vault goal first.'}
-                </Text>
-              </View>
+                      ? localStyles.fundingVerified
+                      : localStyles.fundingDraft,
+                  ]}
+                >
+                  <Text
+                    style={
+                      hasOnChainProof
+                        ? localStyles.fundingVerifiedTitle
+                        : localStyles.fundingDraftTitle
+                    }
+                  >
+                    {hasOnChainGoal
+                      ? '✓ Linked to a specific Stellar vault goal'
+                      : 'Tracker only · no funds held'}
+                  </Text>
+                  <Text style={localStyles.fundingStateText}>
+                    {hasOnChainGoal
+                      ? `Vault Goal #${goal.vaultGoalId} · ${goal.fundedAmount.toLocaleString('en-US')} ${goal.asset} verified on-chain.`
+                      : 'Saving this tracker does not transfer XLM. Connect a Testnet vault when you are ready.'}
+                  </Text>
+                </View>
 
-              <Pressable
-                style={localStyles.fundButton}
-                onPress={openVaultGoal}>
-                <Text style={localStyles.fundButtonText}>
-                  {canFundOnChain ? `Fund Vault Goal #${goal.vaultGoalId}` : hasOnChainGoal ? 'Create Replacement Vault Goal' : 'Create Dedicated Vault Goal'}
-                </Text>
-              </Pressable>
-              {hasOnChainProof && goal.transactionHash ? (
                 <Pressable
-                  style={localStyles.proofButton}
-                  onPress={() => void Linking.openURL(`https://stellar.expert/explorer/testnet/tx/${goal.transactionHash}`)}>
-                  <Text style={localStyles.proofButtonText}>View Latest Transaction Proof</Text>
+                  style={localStyles.fundButton}
+                  onPress={openVaultGoal}
+                >
+                  <Text style={localStyles.fundButtonText}>
+                    {canFundOnChain
+                      ? `Fund Vault Goal #${goal.vaultGoalId}`
+                      : hasOnChainGoal
+                        ? 'View Testnet vault'
+                        : 'Connect Testnet vault'}
+                  </Text>
                 </Pressable>
-              ) : null}
-            </View>
-          );
-        })}
+                {hasOnChainProof && goal.transactionHash ? (
+                  <Pressable
+                    style={localStyles.proofButton}
+                    onPress={() =>
+                      void Linking.openURL(
+                        `https://stellar.expert/explorer/testnet/tx/${goal.transactionHash}`,
+                      )
+                    }
+                  >
+                    <Text style={localStyles.proofButtonText}>
+                      View Latest Transaction Proof
+                    </Text>
+                  </Pressable>
+                ) : null}
+              </View>
+            );
+          })}
 
         {!goals.length && !loading ? (
           <View style={{ paddingVertical: 12 }}>
             <Text style={styles.emptyTitle}>No savings goals yet</Text>
             <Text style={styles.emptyText}>
-              Create your first savings goal below to track target funds on the Stellar network.
+              Create your first savings goal above to track target funds on the
+              Stellar network.
             </Text>
           </View>
         ) : null}
-      </View>
-
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Create New Goal</Text>
-        <TextInput
-          style={localStyles.input}
-          placeholder="Goal name (e.g., Emergency Fund)"
-          placeholderTextColor="#65738c"
-          value={form.name}
-          onChangeText={(value) => setForm((c) => ({ ...c, name: value }))}
-        />
-
-        <View style={localStyles.formRow}>
-          <TextInput
-            style={[localStyles.input, { flex: 1 }]}
-            placeholder="Target amount"
-            placeholderTextColor="#65738c"
-            keyboardType="decimal-pad"
-            value={form.targetAmount}
-            onChangeText={(value) => setForm((c) => ({ ...c, targetAmount: value }))}
-          />
-          <View style={localStyles.assetPicker}>
-            {['XLM', 'USDC'].map((asset) => (
-              <Pressable
-                key={asset}
-                onPress={() => setForm((c) => ({ ...c, asset }))}
-                style={[
-                  localStyles.assetChoice,
-                  form.asset === asset && localStyles.assetChoiceActive,
-                ]}>
-                <Text
-                  style={[
-                    localStyles.assetChoiceText,
-                    form.asset === asset && localStyles.assetChoiceTextActive,
-                  ]}>
-                  {asset}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
-        </View>
-
-        <TextInput
-          style={localStyles.input}
-          placeholder="Target date (YYYY-MM-DD, optional)"
-          placeholderTextColor="#65738c"
-          value={form.targetDate}
-          onChangeText={(value) => setForm((c) => ({ ...c, targetDate: value }))}
-        />
-
-        {message ? <Text style={[styles.rowMeta, { color: '#ff8b9c' }]}>{message}</Text> : null}
-
-        <Pressable style={styles.primaryButton} onPress={create}>
-          <Text style={styles.primaryButtonText}>Save Goal Draft</Text>
-        </Pressable>
       </View>
     </FinancePage>
   );
 }
 
 const localStyles = StyleSheet.create({
-  stellarBanner: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: '#10233a', borderWidth: 1, borderColor: '#275382', borderRadius: 12, padding: 13 },
+  stellarBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: '#10233a',
+    borderWidth: 1,
+    borderColor: '#275382',
+    borderRadius: 12,
+    padding: 13,
+  },
   stellarTitle: { color: '#72b7ff', fontWeight: '800', fontSize: 13 },
-  stellarButton: { backgroundColor: '#5ca9ff', borderRadius: 8, paddingHorizontal: 14, paddingVertical: 10 },
+  stellarButton: {
+    backgroundColor: '#5ca9ff',
+    borderRadius: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
   stellarButtonText: { color: '#07111f', fontWeight: '800' },
   headerRow: {
     flexDirection: 'row',

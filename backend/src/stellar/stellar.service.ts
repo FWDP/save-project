@@ -236,6 +236,14 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
   }
 
   async prepareVaultInvocation(dto: PrepareVaultInvocationDto) {
+    if (dto.savingsGoalId) {
+      const tracker = await this.savingsService.findOne(dto.savingsGoalId);
+      const owner = dto.owner || dto.source;
+      if (tracker.ownerAddress && tracker.ownerAddress !== owner) {
+        throw new BadRequestException('This tracker belongs to a different wallet');
+      }
+      await this.savingsService.update(dto.savingsGoalId, { ownerAddress: owner });
+    }
     this.assertAccount(dto.source);
     const contractId = this.requireVaultContract();
     const existing = await this.findSigningRequest(dto.idempotencyKey);
@@ -522,7 +530,7 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
           : goal.status === 'Completed'
             ? 'completed'
             : 'active';
-      await this.savingsService.update(request.savingsGoalId, {
+      await this.savingsService.updateVerified(request.savingsGoalId, {
         fundedAmount: balance,
         status,
         network: 'testnet',
@@ -530,7 +538,7 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
         contractId: this.requireVaultContract(),
         vaultGoalId: request.goalId,
         transactionHash: request.hash,
-      });
+      }, goal.owner);
     } catch {
       // The confirmed on-chain transaction remains authoritative. A later
       // refresh can retry tracker reconciliation without affecting funds.

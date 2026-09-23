@@ -27,12 +27,24 @@ export class SavingsController {
 
   @Post()
   create(@Body() dto: CreateSavingsGoalDto) {
-    return this.savingsService.create(dto);
+    return this.savingsService.create({
+      name: dto.name,
+      targetAmount: dto.targetAmount,
+      targetDate: dto.targetDate,
+      asset: dto.asset,
+      status: 'draft',
+      fundedAmount: 0,
+      network: 'testnet',
+    });
   }
 
   @Patch(':id')
   update(@Param('id') id: string, @Body() dto: UpdateSavingsGoalDto) {
-    return this.savingsService.update(id, dto);
+    return this.savingsService.update(id, {
+      name: dto.name,
+      targetAmount: dto.targetAmount,
+      targetDate: dto.targetDate,
+    });
   }
 
   @Delete(':id')

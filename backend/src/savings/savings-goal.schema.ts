@@ -3,10 +3,14 @@ import { Document } from 'mongoose';
 
 export type SavingsGoalDocument = SavingsGoal & Document;
 
-export type SavingsGoalStatus = 'draft' | 'pending' | 'active' | 'completed' | 'withdrawn' | 'cancelled';
+export type SavingsGoalStatus =
+  'draft' | 'pending' | 'active' | 'completed' | 'withdrawn' | 'cancelled';
 
 @Schema({ timestamps: true })
 export class SavingsGoal {
+  @Prop({ required: true, index: true })
+  userId: string;
+
   @Prop({ required: true, trim: true })
   name: string;
 

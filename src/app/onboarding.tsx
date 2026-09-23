@@ -1,175 +1,167 @@
-import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-
-import { saveAuthUser, type AuthUser } from '@/lib/auth';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useRouter } from 'expo-router';
+import { FinancePage } from '@/components/layout/finance-page';
+import {
+  authConfigured,
+  authRedirect,
+  requireAuthClient,
+  signInGoogle,
+} from '@/lib/auth';
 
 export default function OnboardingScreen() {
   const router = useRouter();
-  const [name, setName] = useState('Marcus Lee');
-  const [email, setEmail] = useState('marcus@save.app');
-  const [role, setRole] = useState<'admin' | 'user'>('user');
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
-  const handleContinue = async () => {
-    setIsSubmitting(true);
-
-    const user: AuthUser = {
-      id: role === 'admin' ? 'usr_admin_1' : 'usr_2',
-      name: name.trim() || 'SAVE User',
-      email: email.trim() || 'user@save.app',
-      role,
-    };
-
-    await saveAuthUser(user);
-    router.replace('/');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [signup, setSignup] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState('');
+  const run = async (action: 'password' | 'magic' | 'google') => {
+    if (busy) return;
+    setBusy(true);
+    setMessage('');
+    try {
+      const client = requireAuthClient();
+      if (action === 'google') {
+        await signInGoogle();
+        return;
+      }
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()))
+        throw new Error('Enter a valid email address.');
+      if (action === 'magic') {
+        const { error } = await client.auth.signInWithOtp({
+          email: email.trim(),
+          options: { emailRedirectTo: authRedirect() },
+        });
+        if (error) throw error;
+        setMessage('Check your email. Open the sign-in link on this device.');
+        return;
+      }
+      if (signup && password.length < 12)
+        throw new Error('Use a password with at least 12 characters.');
+      const { data, error } = signup
+        ? await client.auth.signUp({
+            email: email.trim(),
+            password,
+            options: { emailRedirectTo: authRedirect() },
+          })
+        : await client.auth.signInWithPassword({
+            email: email.trim(),
+            password,
+          });
+      if (error) throw error;
+      if (data.session) router.replace('/');
+      else
+        setMessage('Check your email to confirm your account on this device.');
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : 'Sign-in failed. Please retry.',
+      );
+    } finally {
+      setBusy(false);
+    }
   };
-
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <ScrollView contentContainerStyle={styles.container}>
-        <View style={styles.hero}>
-          <Text style={styles.eyebrow}>Welcome</Text>
-          <Text style={styles.title}>Set up your SAVE account</Text>
-          <Text style={styles.subtitle}>Keep spending visible, synced, and protected.</Text>
-        </View>
-
-        <View style={styles.card}>
-          <TextInput
-            value={name}
-            onChangeText={setName}
-            placeholder="Full name"
-            placeholderTextColor="#8aa3bf"
-            style={styles.input}
-          />
-
-          <TextInput
-            value={email}
-            onChangeText={setEmail}
-            placeholder="Email address"
-            keyboardType="email-address"
-            autoCapitalize="none"
-            placeholderTextColor="#8aa3bf"
-            style={styles.input}
-          />
-
-          <View style={styles.roleRow}>
-            {(['user', 'admin'] as const).map((option) => (
-              <Pressable
-                key={option}
-                onPress={() => setRole(option)}
-                style={[styles.roleButton, role === option && styles.roleButtonActive]}>
-                <Text style={styles.roleButtonText}>{option}</Text>
-              </Pressable>
-            ))}
-          </View>
-
-          <Pressable disabled={isSubmitting} onPress={handleContinue} style={styles.primaryButton}>
-            <Text style={styles.primaryButtonText}>{isSubmitting ? 'Loading...' : 'Continue'}</Text>
-          </Pressable>
-
-          <Pressable onPress={() => router.replace('/')} style={styles.secondaryButton}>
-            <Text style={styles.secondaryButtonText}>Skip for now</Text>
-          </Pressable>
-        </View>
-      </ScrollView>
-    </SafeAreaView>
+    <FinancePage
+      title="Welcome to SAVE"
+      subtitle="Your spending, budgets, and goals in one place"
+      showSync={false}
+    >
+      <View style={styles.card}>
+        <Text style={styles.title}>
+          {signup ? 'Create your account' : 'Sign in'}
+        </Text>
+        {!authConfigured && (
+          <Text style={styles.message}>
+            Account sign-in is awaiting provider configuration.
+          </Text>
+        )}
+        <Text style={styles.label}>Email</Text>
+        <TextInput
+          accessibilityLabel="Email"
+          autoCapitalize="none"
+          autoComplete="email"
+          keyboardType="email-address"
+          value={email}
+          onChangeText={setEmail}
+          style={styles.input}
+        />
+        <Text style={styles.label}>Password</Text>
+        <TextInput
+          accessibilityLabel="Password"
+          autoCapitalize="none"
+          secureTextEntry
+          autoComplete={signup ? 'new-password' : 'current-password'}
+          value={password}
+          onChangeText={setPassword}
+          style={styles.input}
+        />
+        <Pressable
+          disabled={busy || !authConfigured}
+          style={styles.primary}
+          onPress={() => run('password')}
+        >
+          <Text style={styles.primaryText}>
+            {busy ? 'Please wait…' : signup ? 'Create account' : 'Sign in'}
+          </Text>
+        </Pressable>
+        <Pressable
+          disabled={busy || !authConfigured}
+          style={styles.secondary}
+          onPress={() => run('google')}
+        >
+          <Text style={styles.label}>Continue with Google</Text>
+        </Pressable>
+        <Pressable
+          disabled={busy || !authConfigured}
+          style={styles.secondary}
+          onPress={() => run('magic')}
+        >
+          <Text style={styles.label}>Email me a sign-in link</Text>
+        </Pressable>
+        <Pressable
+          disabled={busy}
+          style={styles.secondary}
+          onPress={() => setSignup(!signup)}
+        >
+          <Text style={styles.link}>
+            {signup
+              ? 'Already have an account? Sign in'
+              : 'New to SAVE? Create an account'}
+          </Text>
+        </Pressable>
+        {message ? (
+          <Text accessibilityLiveRegion="polite" style={styles.message}>
+            {message}
+          </Text>
+        ) : null}
+      </View>
+    </FinancePage>
   );
 }
-
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: '#0b1220',
-  },
-  container: {
-    flexGrow: 1,
-    padding: 24,
-    justifyContent: 'center',
-  },
-  hero: {
-    marginBottom: 18,
-  },
-  eyebrow: {
-    color: '#7dd3fc',
-    fontSize: 12,
-    textTransform: 'uppercase',
-    letterSpacing: 1.3,
-    marginBottom: 8,
-  },
-  title: {
-    color: '#f8fafc',
-    fontSize: 30,
-    fontWeight: '700',
-    marginBottom: 8,
-  },
-  subtitle: {
-    color: '#8aa3bf',
-    fontSize: 16,
-    lineHeight: 24,
-  },
-  card: {
-    backgroundColor: '#121d2e',
-    borderRadius: 24,
-    padding: 20,
-    borderWidth: 1,
-    borderColor: '#1d2940',
-    gap: 14,
-  },
+  card: { padding: 20, gap: 12, backgroundColor: '#0d1629', borderRadius: 16 },
+  title: { color: '#f4f7fb', fontSize: 24, fontWeight: '800' },
+  label: { color: '#e5ebf5', fontSize: 15 },
   input: {
-    backgroundColor: '#0f172a',
-    borderRadius: 12,
+    backgroundColor: '#081120',
+    color: '#f4f7fb',
     borderWidth: 1,
-    borderColor: '#1d2940',
-    paddingHorizontal: 14,
-    paddingVertical: 14,
-    color: '#f8fafc',
-  },
-  roleRow: {
-    flexDirection: 'row',
-    gap: 10,
-  },
-  roleButton: {
-    flex: 1,
-    backgroundColor: '#0f172a',
+    borderColor: '#31405a',
     borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#1d2940',
-    paddingVertical: 12,
-    alignItems: 'center',
-  },
-  roleButtonActive: {
-    backgroundColor: '#1d4ed8',
-    borderColor: '#1d4ed8',
-  },
-  roleButtonText: {
-    color: '#f8fafc',
-    fontWeight: '600',
-    textTransform: 'capitalize',
-  },
-  primaryButton: {
-    backgroundColor: '#8b5cf6',
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 14,
-  },
-  primaryButtonText: {
-    color: '#fff',
-    fontWeight: '700',
+    padding: 14,
     fontSize: 16,
   },
-  secondaryButton: {
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#1d2940',
+  primary: {
+    backgroundColor: '#55a6ff',
+    padding: 16,
+    borderRadius: 10,
     alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 14,
   },
-  secondaryButtonText: {
-    color: '#cbd5e1',
-    fontWeight: '600',
-  },
+  primaryText: { color: '#07111f', fontWeight: '800', fontSize: 16 },
+  secondary: { padding: 14, alignItems: 'center', minHeight: 48 },
+  link: { color: '#75b6ff', fontSize: 14 },
+  message: { color: '#e9bd69', fontSize: 14, lineHeight: 21 },
 });

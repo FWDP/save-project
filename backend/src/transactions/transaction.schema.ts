@@ -5,6 +5,9 @@ export type TransactionDocument = Transaction & Document;
 
 @Schema({ timestamps: true })
 export class Transaction {
+  @Prop()
+  clientMutationId?: string;
+
   @Prop({ required: true, trim: true })
   userId: string;
 
@@ -23,7 +26,11 @@ export class Transaction {
   @Prop({ required: true })
   date: string;
 
-  @Prop({ required: true, enum: ['pending', 'approved', 'rejected'], default: 'pending' })
+  @Prop({
+    required: true,
+    enum: ['pending', 'approved', 'rejected'],
+    default: 'pending',
+  })
   status: string;
 
   @Prop({ trim: true })
@@ -46,3 +53,11 @@ export const TransactionSchema = SchemaFactory.createForClass(Transaction);
 TransactionSchema.index({ userId: 1, date: -1 });
 TransactionSchema.index({ userId: 1, type: 1, date: -1 });
 TransactionSchema.index({ userId: 1, category: 1, date: -1 });
+
+TransactionSchema.index(
+  { userId: 1, clientMutationId: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { clientMutationId: { $type: 'string' } },
+  },
+);
