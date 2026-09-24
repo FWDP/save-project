@@ -1,8 +1,10 @@
-export function money(minor: number) {
+import { currencyDigits } from "./currency";
+export function money(minor: number, currency = "PHP") {
   return new Intl.NumberFormat("en-PH", {
     style: "currency",
-    currency: "PHP",
-  }).format(minor / 100);
+    currency,
+    currencyDisplay: "code",
+  }).format(minor / 10 ** currencyDigits(currency));
 }
 export function today(timezone = "Asia/Manila") {
   return new Intl.DateTimeFormat("en-CA", {
@@ -19,11 +21,18 @@ export function monthLabel(month: string) {
     timeZone: "UTC",
   });
 }
-export function decimalToMinor(value: string) {
-  if (!/^\d{1,10}(\.\d{1,2})?$/.test(value.trim()))
-    throw new Error("Enter a positive amount with at most two decimal places.");
+export function decimalToMinor(value: string, currency = "PHP") {
+  const digits = currencyDigits(currency);
+  const pattern = digits
+    ? new RegExp(`^\\d{1,12}(\\.\\d{1,${digits}})?$`)
+    : /^\d{1,12}$/;
+  if (!pattern.test(value.trim()))
+    throw new Error(
+      `${currency} requires a positive amount with ${digits ? `at most ${digits} decimal places` : "no decimal places"}.`,
+    );
   const [major, fraction = ""] = value.trim().split(".");
-  const amount = Number(major) * 100 + Number(fraction.padEnd(2, "0"));
+  const amount =
+    Number(major) * 10 ** digits + Number(fraction.padEnd(digits, "0"));
   if (!Number.isSafeInteger(amount) || amount <= 0 || amount > 999999999999)
     throw new Error("The amount is outside the supported range.");
   return amount;

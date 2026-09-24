@@ -1,3 +1,4 @@
+import { LiveConversion } from "@/components/live-conversion";
 import Link from "next/link";
 import { api } from "@/lib/api";
 import { filters, money, monthLabel } from "@/lib/format";
@@ -41,7 +42,13 @@ export default async function Reports({
         </label>
         <button className="button secondary">View report</button>
       </form>
-      <Summary data={data} />
+      <Summary data={data} currency={workspace.currency} />
+      <LiveConversion
+        key={`${id}:${query}`}
+        workspaceId={id}
+        currency={workspace.currency}
+        query={query.toString()}
+      />
       <div className="overview-grid">
         <section className="panel">
           <div className="panel-heading">
@@ -50,7 +57,7 @@ export default async function Reports({
               <p>Up to eight categories in this view.</p>
             </div>
           </div>
-          <CategoryBreakdown data={data} />
+          <CategoryBreakdown data={data} currency={workspace.currency} />
         </section>
         <section className="panel">
           <div className="panel-heading">
@@ -66,16 +73,16 @@ export default async function Reports({
             </div>
             <div>
               <dt>Income</dt>
-              <dd>{money(data.summary.incomeMinor)}</dd>
+              <dd>{money(data.summary.incomeMinor, workspace.currency)}</dd>
             </div>
             <div>
               <dt>Expenses</dt>
-              <dd>{money(data.summary.expenseMinor)}</dd>
+              <dd>{money(data.summary.expenseMinor, workspace.currency)}</dd>
             </div>
             <div>
               <dt>Net recorded balance</dt>
               <dd className={data.summary.balanceMinor >= 0 ? "mint" : "coral"}>
-                {money(data.summary.balanceMinor)}
+                {money(data.summary.balanceMinor, workspace.currency)}
               </dd>
             </div>
           </dl>

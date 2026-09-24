@@ -1,3 +1,4 @@
+import { SUPPORTED_CURRENCIES } from "./currencies";
 import { Type } from "class-transformer";
 import {
   IsEnum,
@@ -11,6 +12,7 @@ import {
   Min,
 } from "class-validator";
 export class CreateWorkspaceDto {
+  @IsOptional() @IsEnum(SUPPORTED_CURRENCIES) currency?: string;
   @IsString() @IsNotEmpty() @MaxLength(80) name: string;
   @IsEnum(["personal", "business"]) kind: "personal" | "business";
   @IsString() @Matches(/^[a-zA-Z0-9_-]{8,100}$/) clientMutationId: string;
@@ -37,4 +39,8 @@ export class TransactionQueryDto {
 }
 export class RevisionDto {
   @IsInt() @Min(1) revision: number;
+}
+
+export class ConvertedReportQueryDto extends TransactionQueryDto {
+  @IsEnum(SUPPORTED_CURRENCIES) target: string;
 }

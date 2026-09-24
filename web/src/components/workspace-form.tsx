@@ -1,6 +1,7 @@
 "use client";
 import { useActionState, useState } from "react";
 import { createWorkspace } from "@/app/workspaces/actions";
+import { CURRENCIES, currencyName } from "@/lib/currency";
 import { Icon } from "./icon";
 export function WorkspaceForm({
   mutationId,
@@ -53,8 +54,19 @@ export function WorkspaceForm({
           }
         />
       </label>
+      <label>
+        Workspace currency
+        <select name="currency" defaultValue="PHP">
+          {CURRENCIES.map((code) => (
+            <option key={code} value={code}>
+              {code} · {currencyName(code)}
+            </option>
+          ))}
+        </select>
+      </label>
       <p className="field-help">
-        Amounts are recorded in Philippine pesos. Dates use Asia/Manila time.
+        All records use this currency. It cannot be changed after creation.
+        Dates use Asia/Manila time.
       </p>
       {state.error && (
         <p className="notice danger" role="alert">

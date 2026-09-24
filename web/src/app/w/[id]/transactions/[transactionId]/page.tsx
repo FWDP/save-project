@@ -32,6 +32,7 @@ export default async function TransactionDetail({
       </div>
       <div className="panel form-panel">
         <TransactionForm
+          currency={workspace.currency}
           workspaceId={id}
           mutationId={item.clientMutationId}
           date={item.date}

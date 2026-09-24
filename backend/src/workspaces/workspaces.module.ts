@@ -1,3 +1,4 @@
+import { ExchangeRatesService } from "./exchange-rates.service";
 import { Module } from "@nestjs/common";
 import { MongooseModule } from "@nestjs/mongoose";
 import {
@@ -16,6 +17,6 @@ import { WorkspacesService } from "./workspaces.service";
     ]),
   ],
   controllers: [WorkspacesController],
-  providers: [WorkspacesService],
+  providers: [WorkspacesService, ExchangeRatesService],
 })
 export class WorkspacesModule {}

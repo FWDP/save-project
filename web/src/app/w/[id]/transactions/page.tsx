@@ -42,7 +42,7 @@ export default async function Transactions({
           </Link>
         )}
       </div>
-      <Summary data={data} />
+      <Summary data={data} currency={workspace.currency} />
       <section className="panel">
         <form className="filter-bar">
           <label className="search-field">
@@ -84,7 +84,11 @@ export default async function Transactions({
           </Link>
         </form>
         {data.items.length ? (
-          <TransactionTable items={data.items} workspaceId={id} />
+          <TransactionTable
+            currency={workspace.currency}
+            items={data.items}
+            workspaceId={id}
+          />
         ) : (
           <EmptyTransactions
             workspace={workspace}

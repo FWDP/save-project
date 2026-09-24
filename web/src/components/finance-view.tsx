@@ -2,7 +2,13 @@ import Link from "next/link";
 import { money } from "@/lib/format";
 import type { TransactionPage, Transaction, Workspace } from "@/lib/types";
 import { Icon } from "./icon";
-export function Summary({ data }: { data: TransactionPage }) {
+export function Summary({
+  data,
+  currency,
+}: {
+  data: TransactionPage;
+  currency: string;
+}) {
   const cards = [
     {
       label: "Recorded balance",
@@ -34,7 +40,7 @@ export function Summary({ data }: { data: TransactionPage }) {
             {card.label}
             <Icon name={card.icon} />
           </div>
-          <strong>{money(card.value)}</strong>
+          <strong>{money(card.value, currency)}</strong>
           <span>{card.note}</span>
         </article>
       ))}
@@ -44,9 +50,11 @@ export function Summary({ data }: { data: TransactionPage }) {
 export function TransactionTable({
   items,
   workspaceId,
+  currency,
 }: {
   items: Transaction[];
   workspaceId: string;
+  currency: string;
 }) {
   return (
     <div className="table-scroll">
@@ -102,7 +110,7 @@ export function TransactionTable({
               </td>
               <td className={`numeric amount ${item.type}`}>
                 {item.type === "income" ? "+" : "−"}
-                {money(item.amountMinor)}
+                {money(item.amountMinor, currency)}
               </td>
               <td>
                 <Link
@@ -153,7 +161,13 @@ export function EmptyTransactions({
     </div>
   );
 }
-export function CategoryBreakdown({ data }: { data: TransactionPage }) {
+export function CategoryBreakdown({
+  data,
+  currency,
+}: {
+  data: TransactionPage;
+  currency: string;
+}) {
   return (
     <div className="category-list">
       {data.categories.length ? (
@@ -164,7 +178,7 @@ export function CategoryBreakdown({ data }: { data: TransactionPage }) {
                 <i className={`category-dot dot-${index % 4}`} />
                 {category.name}
               </span>
-              <strong>{money(category.amountMinor)}</strong>
+              <strong>{money(category.amountMinor, currency)}</strong>
             </div>
             <div className="bar-track">
               <div

@@ -30,6 +30,7 @@ export async function createWorkspace(
       body: JSON.stringify({
         name: String(form.get("name") ?? "").trim(),
         kind: String(form.get("kind")),
+        currency: String(form.get("currency") || "PHP"),
         clientMutationId: String(form.get("clientMutationId")),
       }),
     });
@@ -48,9 +49,13 @@ export async function saveTransaction(
   try {
     workspaceId = id(form, "workspaceId");
     date = String(form.get("date"));
+    const workspace = await api<Workspace>(`/workspaces/${workspaceId}`);
     const payload = {
       type: String(form.get("type")),
-      amountMinor: decimalToMinor(String(form.get("amount") ?? "")),
+      amountMinor: decimalToMinor(
+        String(form.get("amount") ?? ""),
+        workspace.currency,
+      ),
       description: String(form.get("description") ?? "").trim(),
       category: String(form.get("category") ?? "").trim(),
       merchant: String(form.get("merchant") ?? "").trim(),

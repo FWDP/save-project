@@ -70,7 +70,7 @@ export default async function WorkspaceLayout({
             <span className={`kind-badge ${workspace.kind}`}>
               {workspace.kind === "business" ? "Business" : "Personal"}
             </span>
-            <span className="currency-tag">PHP</span>
+            <span className="currency-tag">{workspace.currency}</span>
           </div>
         </header>
         <main id="main-content" className="content">

@@ -3,16 +3,19 @@ import { useActionState } from "react";
 import Link from "next/link";
 import { saveTransaction, removeTransaction } from "@/app/workspaces/actions";
 import type { Transaction } from "@/lib/types";
+import { currencyDigits, minorToDecimal } from "@/lib/currency";
 import { Icon } from "./icon";
 export function TransactionForm({
   workspaceId,
   mutationId,
+  currency,
   date,
   item,
   readOnly = false,
 }: {
   workspaceId: string;
   mutationId: string;
+  currency: string;
   date: string;
   item?: Transaction;
   readOnly?: boolean;
@@ -46,15 +49,25 @@ export function TransactionForm({
             </select>
           </label>
           <label>
-            Amount (PHP)
+            Amount ({currency})
             <input
               name="amount"
               type="text"
               inputMode="decimal"
               required
-              pattern="[0-9]+(\.[0-9]{1,2})?"
-              defaultValue={item ? (item.amountMinor / 100).toFixed(2) : ""}
-              placeholder="0.00"
+              pattern={
+                currencyDigits(currency)
+                  ? `[0-9]+(\\.[0-9]{1,${currencyDigits(currency)}})?`
+                  : "[0-9]+"
+              }
+              defaultValue={
+                item ? minorToDecimal(item.amountMinor, currency) : ""
+              }
+              placeholder={
+                currencyDigits(currency)
+                  ? `0.${"0".repeat(currencyDigits(currency))}`
+                  : "0"
+              }
             />
           </label>
           <label className="span-two">

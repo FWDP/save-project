@@ -64,7 +64,7 @@ export default async function Overview({
           This view shows your own records in this workspace.
         </p>
       )}
-      <Summary data={data} />
+      <Summary data={data} currency={workspace.currency} />
       <div className="overview-grid">
         <section className="panel recent-panel">
           <div className="panel-heading">
@@ -80,7 +80,11 @@ export default async function Overview({
             </Link>
           </div>
           {data.items.length ? (
-            <TransactionTable workspaceId={id} items={data.items.slice(0, 6)} />
+            <TransactionTable
+              currency={workspace.currency}
+              workspaceId={id}
+              items={data.items.slice(0, 6)}
+            />
           ) : (
             <EmptyTransactions workspace={workspace} />
           )}
@@ -92,7 +96,7 @@ export default async function Overview({
               <p>Spending by category.</p>
             </div>
           </div>
-          <CategoryBreakdown data={data} />
+          <CategoryBreakdown data={data} currency={workspace.currency} />
         </section>
       </div>
       <div className="insight-banner">

@@ -32,7 +32,7 @@ export function AuthLayout({ children }: { children: ReactNode }) {
         </div>
         <div className="auth-footer">
           <span>Built for everyday progress.</span>
-          <span>PHP · Philippines</span>
+          <span>Personal · Business</span>
         </div>
       </section>
       <section className="auth-panel">{children}</section>

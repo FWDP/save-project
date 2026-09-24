@@ -1,3 +1,4 @@
+import { SUPPORTED_CURRENCIES } from "./currencies";
 import { Prop, Schema, SchemaFactory } from "@nestjs/mongoose";
 import { HydratedDocument } from "mongoose";
 export type WorkspaceRole = "owner" | "admin" | "finance" | "member" | "viewer";
@@ -20,7 +21,8 @@ export class Workspace {
     "personal" | "business";
   @Prop({ required: true, index: true }) ownerId: string;
   @Prop({ required: true }) clientMutationId: string;
-  @Prop({ default: "PHP", enum: ["PHP"] }) currency: string;
+  @Prop({ default: "PHP", enum: SUPPORTED_CURRENCIES, immutable: true })
+  currency: string;
   @Prop({ default: "Asia/Manila" }) timezone: string;
   @Prop({ type: [MemberSchema], required: true }) members: WorkspaceMember[];
 }

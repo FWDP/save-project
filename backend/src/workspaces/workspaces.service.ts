@@ -111,7 +111,7 @@ export class WorkspacesService {
               ...dto,
               name: dto.name.trim(),
               ownerId: userId,
-              currency: "PHP",
+              currency: dto.currency ?? "PHP",
               timezone: "Asia/Manila",
               members: [{ userId, role: "owner", status: "active" }],
             },

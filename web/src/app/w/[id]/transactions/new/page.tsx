@@ -33,6 +33,7 @@ export default async function NewTransaction({
       ) : (
         <div className="panel form-panel">
           <TransactionForm
+            currency={workspace.currency}
             workspaceId={id}
             mutationId={randomUUID()}
             date={today(workspace.timezone)}

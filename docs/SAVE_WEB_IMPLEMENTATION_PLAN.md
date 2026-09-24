@@ -8,13 +8,17 @@ The dedicated `web/` app now uses Next.js 16.3.6 and React 19.2.8. See [local se
 
 - Server-side email/password, Google, magic-link and recovery flows; verified provider identity, HttpOnly session cookies, protected pages and server actions.
 - Personal/business workspace creation and switching, with backend active-membership checks and owner/admin/finance/member/viewer permissions.
-- Integer-centavo transactions with create/read/edit/delete, mutation IDs, revision conflicts, date validation, URL filters and 25-record pagination.
+- Integer-minor-unit transactions with create/read/edit/delete, mutation IDs, revision conflicts, date validation, URL filters and 25-record pagination.
 - Responsive overview, transaction screens, category reports and summary CSV export. Totals cover all matching records, not only the current page.
 - Permission-policy/service tests and amount/filter tests. Browser qualification uses isolated local auth/API fixtures; live provider and database integration remain release gates.
 
 This slice uses embedded memberships, category labels and page-number pagination. Invitations, category entities, cursor pagination, shared domain packaging, approvals, audit history, budgets, savings and receipt uploads remain future work. Business users can currently track records; team administration is not exposed.
 
 **Migration boundary:** new Web records use `workspace_transactions`. Existing mobile user-scoped records remain intact and are not yet shared with Web. A tested migration and mobile workspace integration must precede a shared-data release. No external provider configuration or deployment was performed.
+
+## Currency support implemented
+
+New Web personal/business workspaces can select from 23 currencies, including TWD (NTD), CNY and KRW. Workspace currency is immutable; existing records retain PHP. Entry, editing, summaries and CSV use currency-specific precision. Reports now offer current-rate conversion through CurrencyAPI, with provider timestamps, 60-second refresh, five-minute freshness enforcement and converted CSV metadata. Activation requires a configured minute-level API subscription. Saved records remain in their original workspace currency; historical-rate booking remains future work. See the supported list in `web/README.md`. Native mobile remains PHP until its separate data model is migrated.
 
 ## Product and architecture decision
 

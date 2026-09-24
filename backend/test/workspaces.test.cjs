@@ -239,3 +239,55 @@ test("invalid calendar dates and empty labels cannot be persisted", () => {
   );
   assert.equal(escapeSearch("$100 (cash)"), "\\$100 \\(cash\\)");
 });
+test("workspace currency defaults to PHP and supports TWD, CNY and KRW at creation", async () => {
+  for (const currency of [undefined, "TWD", "CNY", "KRW"]) {
+    const model = {
+      findOneAndUpdate(filter, update) {
+        assert.equal(update.$setOnInsert.currency, currency ?? "PHP");
+        return {
+          lean: async () => ({
+            ...update.$setOnInsert,
+            _id: new Types.ObjectId(workspaceId),
+          }),
+        };
+      },
+    };
+    await actor("alice", () =>
+      new WorkspacesService(model, {}).create({
+        name: "Currency test",
+        kind: "business",
+        clientMutationId: "currency-test",
+        currency,
+      }),
+    );
+  }
+});
+test("currency validation rejects unknown codes and workspace currency is immutable", async () => {
+  const { validate } = require("class-validator");
+  const { CreateWorkspaceDto } = require("../dist/workspaces/workspaces.dto");
+  const { WorkspaceSchema } = require("../dist/workspaces/workspace.schema");
+  for (const currency of ["TWD", "CNY", "KRW", "USD"])
+    assert.equal(
+      (
+        await validate(
+          Object.assign(new CreateWorkspaceDto(), {
+            name: "Test",
+            kind: "business",
+            clientMutationId: "test-currency",
+            currency,
+          }),
+        )
+      ).length,
+      0,
+    );
+  const errors = await validate(
+    Object.assign(new CreateWorkspaceDto(), {
+      name: "Test",
+      kind: "business",
+      clientMutationId: "test-currency",
+      currency: "NTD",
+    }),
+  );
+  assert.ok(errors.some((e) => e.property === "currency"));
+  assert.equal(WorkspaceSchema.path("currency").options.immutable, true);
+});

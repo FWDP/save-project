@@ -1,3 +1,4 @@
+import { ExchangeRatesService, convertMinor } from "./exchange-rates.service";
 import {
   Body,
   Controller,
@@ -9,6 +10,7 @@ import {
   Query,
 } from "@nestjs/common";
 import {
+  ConvertedReportQueryDto,
   CreateWorkspaceDto,
   EditWorkspaceTransactionDto,
   RevisionDto,
@@ -18,7 +20,10 @@ import {
 import { WorkspacesService } from "./workspaces.service";
 @Controller("workspaces")
 export class WorkspacesController {
-  constructor(private readonly service: WorkspacesService) {}
+  constructor(
+    private readonly service: WorkspacesService,
+    private readonly rates: ExchangeRatesService,
+  ) {}
   @Get() list() {
     return this.service.list();
   }
@@ -27,6 +32,31 @@ export class WorkspacesController {
   }
   @Get(":id") get(@Param("id") id: string) {
     return this.service.get(id);
+  }
+  @Get(":id/reports/converted") async convertedReport(
+    @Param("id") id: string,
+    @Query() query: ConvertedReportQueryDto,
+  ) {
+    const workspace = await this.service.get(id);
+    const data = await this.service.listTransactions(id, query);
+    const quote = await this.rates.quote(workspace.currency, query.target);
+    const convert = (amount: number) =>
+      convertMinor(amount, quote.base, quote.target, quote.rate);
+    const incomeMinor = convert(data.summary.incomeMinor);
+    const expenseMinor = convert(data.summary.expenseMinor);
+    return {
+      quote,
+      total: data.total,
+      summary: {
+        incomeMinor,
+        expenseMinor,
+        balanceMinor: incomeMinor - expenseMinor,
+      },
+      categories: data.categories.map((category: {name: string; amountMinor: number; count: number}) => ({
+        ...category,
+        amountMinor: convert(category.amountMinor),
+      })),
+    };
   }
   @Get(":id/transactions") transactions(
     @Param("id") id: string,

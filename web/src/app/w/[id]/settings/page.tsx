@@ -44,7 +44,7 @@ export default async function WorkspaceSettings({
           </div>
           <div>
             <dt>Currency</dt>
-            <dd>PHP · Philippine Peso</dd>
+            <dd>{workspace.currency}</dd>
           </div>
           <div>
             <dt>Timezone</dt>
