@@ -76,7 +76,12 @@
     "web:lint": "npm --prefix web run lint",
     "web:typecheck": "npm --prefix web run typecheck",
     "web:start": "npm --prefix web run start",
-    "auth:check": "node scripts/check-auth.cjs"
+    "auth:check": "node scripts/check-auth.cjs",
+    "services:status": "systemctl --user status save-backend save-web",
+    "services:restart": "systemctl --user restart save-backend save-web",
+    "services:stop": "systemctl --user stop save-backend save-web",
+    "services:start": "systemctl --user start save-backend save-web",
+    "services:logs": "journalctl --user -u save-web -u save-backend -f"
   },
   "resolutions": {
     "uuid": "11.1.1",

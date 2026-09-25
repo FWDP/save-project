@@ -1,0 +1,18 @@
+[Unit]
+Description=SAVE Finance Next.js Web Application
+After=network.target save-backend.service
+Wants=save-backend.service
+
+[Service]
+Type=simple
+WorkingDirectory=/home/peej/Documents/Work/FWDP/save-project/web
+Environment=NODE_ENV=production
+Environment=PORT=3002
+ExecStart=/usr/bin/node /home/peej/Documents/Work/FWDP/save-project/web/node_modules/next/dist/bin/next start --port 3002 --hostname 127.0.0.1
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=default.target

@@ -1,10 +1,12 @@
 "use client";
-import { useActionState } from "react";
+import { useRef, useActionState } from "react";
 import Link from "next/link";
 import { saveTransaction, removeTransaction } from "@/app/workspaces/actions";
 import type { Transaction } from "@/lib/types";
 import { currencyDigits, minorToDecimal } from "@/lib/currency";
 import { Icon } from "./icon";
+import { ReceiptScanner } from "./receipt-scanner";
+
 export function TransactionForm({
   workspaceId,
   mutationId,
@@ -20,9 +22,11 @@ export function TransactionForm({
   item?: Transaction;
   readOnly?: boolean;
 }) {
+  const formRef = useRef<HTMLFormElement>(null);
   const [state, action, pending] = useActionState(saveTransaction, {});
+
   return (
-    <form action={action} className="record-form">
+    <form ref={formRef} action={action} className="record-form">
       <input type="hidden" name="workspaceId" value={workspaceId} />
       <input type="hidden" name="clientMutationId" value={mutationId} />
       {item && (
@@ -31,6 +35,23 @@ export function TransactionForm({
           <input type="hidden" name="revision" value={item.revision} />
         </>
       )}
+
+      {/* ── AI Receipt Scanner ─────────────────────────────────────── */}
+      {!readOnly && !item && (
+        <>
+          <div className="form-section-heading">
+            <span className="form-step ai-step">✦</span>
+            <div>
+              <h2>AI Receipt Scan <span className="optional">optional</span></h2>
+              <p>Photograph or upload a receipt — Gemini Flash will pre-fill the form below.</p>
+            </div>
+          </div>
+          <ReceiptScanner formRef={formRef} currency={currency} />
+          <div className="scanner-divider" aria-hidden="true" />
+        </>
+      )}
+
+      {/* ── Essentials ─────────────────────────────────────────────── */}
       <fieldset disabled={readOnly || pending}>
         <legend className="sr-only">Transaction details</legend>
         <div className="form-section-heading">
@@ -128,6 +149,7 @@ export function TransactionForm({
           </label>
         </div>
       </fieldset>
+
       {state.error && (
         <p className="notice danger" role="alert">
           {state.error}
@@ -150,6 +172,7 @@ export function TransactionForm({
     </form>
   );
 }
+
 export function DeleteTransaction({ item }: { item: Transaction }) {
   const [state, action, pending] = useActionState(removeTransaction, {});
   return (

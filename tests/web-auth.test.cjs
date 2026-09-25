@@ -30,6 +30,10 @@ test('expired and missing session callbacks fail closed', async () => {
   assert.equal(response.headers.get('location'),`${base}/sign-in?error=link`);
  }
 });
+test('an invalid project key is reported as configuration failure, not an expired link', async () => {
+ const response = await callback({data:{session:null},error:{name:'AuthApiError',status:401,message:'Invalid API key'}})(new Request(`${base}/auth/callback?code=fresh`));
+ assert.equal(response.headers.get('location'), `${base}/sign-in?error=configuration`);
+});
 function actions(auth) {
  return load(path.join(__dirname,'../web/src/app/auth/actions.ts'),{
   'next/navigation':{redirect:url=>{throw Object.assign(new Error('redirect'),{destination:url})}},
@@ -37,6 +41,36 @@ function actions(auth) {
  });
 }
 const form = values => { const data=new FormData(); for(const [k,v] of Object.entries(values))data.set(k,v);return data; };
+test('cookie security follows the public URL, including HTTP local production', () => {
+ const previous = process.env.SAVE_WEB_URL;
+ try {
+  const config = load(path.join(__dirname, '../web/src/lib/auth-config.ts'));
+  process.env.SAVE_WEB_URL = 'http://save.local';
+  assert.equal(config.authCookieOptions().secure, false);
+  assert.equal(config.authCookieOptions().httpOnly, true);
+  process.env.SAVE_WEB_URL = 'https://save.example';
+  assert.equal(config.authCookieOptions().secure, true);
+ } finally {
+  if(previous === undefined) delete process.env.SAVE_WEB_URL;
+  else process.env.SAVE_WEB_URL = previous;
+ }
+});
+test('sign-in on another host redirects before creating a PKCE cookie', async () => {
+ const previous = process.env.SAVE_WEB_URL;
+ try {
+  process.env.SAVE_WEB_URL = base;
+  const { proxy } = load(path.join(__dirname, '../web/src/proxy.ts'), {
+   '@supabase/ssr': { createServerClient: () => { throw new Error('must redirect first'); } },
+   'next/server': { NextResponse: { redirect: url => new Response(null, {status:307, headers:{location:String(url)}}) } },
+  });
+  const response = await proxy({ method:'GET', nextUrl:new URL('http://localhost:3002/sign-in'), headers:new Headers({host:'localhost:3002'}) });
+  assert.equal(response.headers.get('location'), `${base}/sign-in`);
+  assert.equal(response.headers.get('cache-control'), 'private, no-store');
+ } finally {
+  if(previous === undefined) delete process.env.SAVE_WEB_URL;
+  else process.env.SAVE_WEB_URL = previous;
+ }
+});
 test('Google starts OAuth with the fixed callback and account chooser', async()=>{
  const api=actions({signInWithOAuth:async options=>{assert.equal(options.provider,'google');assert.equal(options.options.redirectTo,`${base}/auth/callback`);assert.equal(options.options.queryParams.prompt,'select_account');return {data:{url:'https://provider.example/authorize'},error:null};}});
  await assert.rejects(api.authenticate({},form({mode:'google'})),{destination:'https://provider.example/authorize'});

@@ -9,6 +9,7 @@ import { TransactionsModule } from './transactions/transactions.module';
 import { UsersModule } from './users/users.module';
 import { SavingsModule } from './savings/savings.module';
 import { StellarModule } from './stellar/stellar.module';
+import { ReceiptsModule } from './receipts/receipts.module';
 import { HealthController } from './health.controller';
 
 @Module({
@@ -35,6 +36,7 @@ import { HealthController } from './health.controller';
     BudgetsModule,
     SavingsModule,
     StellarModule,
+    ReceiptsModule,
   ],
   controllers: [HealthController],
   providers: [],

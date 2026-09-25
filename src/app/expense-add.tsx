@@ -1,9 +1,11 @@
 import { useRefreshFinance } from '@/components/providers/finance-data-provider';
-import { persistReceipt } from '@/lib/receipt-file';
+import { persistReceipt, readReceiptAsBase64 } from '@/lib/receipt-file';
+import { scanReceiptWithAi } from '@/lib/api';
 import { DateField } from '@/components/date-field';
 import { validDate } from '@/lib/finance';
 import { useMemo, useState } from 'react';
 import {
+  ActivityIndicator,
   Pressable,
   StyleSheet,
   Switch,
@@ -26,11 +28,56 @@ export default function AddExpenseScreen() {
   const { draft, patchDraft, resetDraft } = useExpenseDraftStore();
   const [showCategories, setShowCategories] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [analyzing, setAnalyzing] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [aiStatus, setAiStatus] = useState<string | null>(null);
   const availableCategories = useMemo(
     () => categories.filter((item) => item.type === draft.type),
     [categories, draft.type],
   );
+
+  const processReceiptWithAi = async (
+    localUri: string,
+    mimeType = 'image/jpeg',
+  ) => {
+    setAnalyzing(true);
+    setAiStatus('✨ Gemini AI is analyzing your receipt…');
+    try {
+      const base64 = await readReceiptAsBase64(localUri);
+      const categoryNames = availableCategories.map((c) => c.name);
+      const parsed = await scanReceiptWithAi(base64, mimeType, categoryNames);
+
+      const updates: Partial<typeof draft> = {};
+      if (parsed.amount) updates.amount = parsed.amount.toString();
+      if (parsed.merchant) updates.merchant = parsed.merchant;
+      if (parsed.date) updates.date = parsed.date;
+      if (parsed.notes && !draft.description) updates.description = parsed.notes;
+      else if (parsed.merchant && !draft.description)
+        updates.description = `Purchase at ${parsed.merchant}`;
+
+      if (parsed.category) {
+        const matched = availableCategories.find(
+          (c) => c.name.toLowerCase() === parsed.category?.toLowerCase(),
+        );
+        if (matched) {
+          updates.category = matched.name;
+        } else if (!draft.category) {
+          updates.category = parsed.category;
+        }
+      }
+
+      patchDraft(updates);
+      setAiStatus(
+        `✓ Scanned with Gemini AI: ${parsed.merchant || 'Receipt'} (${parsed.currency || '₱'}${parsed.amount})`,
+      );
+    } catch (err: unknown) {
+      const errText =
+        err instanceof Error ? err.message : 'Could not parse with AI';
+      setAiStatus(`AI pre-fill unavailable (${errText}). Receipt attached.`);
+    } finally {
+      setAnalyzing(false);
+    }
+  };
 
   const setType = (type: 'expense' | 'income') =>
     patchDraft({ type, category: '' });
@@ -49,8 +96,12 @@ export default function AddExpenseScreen() {
       const selected = await File.pickFileAsync({
         mimeTypes: ['image/*', 'application/pdf'],
       });
-      if (!selected.canceled)
-        patchDraft({ receiptUri: persistReceipt(selected.result.uri) });
+      if (!selected.canceled) {
+        const localUri = persistReceipt(selected.result.uri);
+        patchDraft({ receiptUri: localUri });
+        const mimeType = (selected.result as any).mimeType || 'image/jpeg';
+        await processReceiptWithAi(localUri, mimeType);
+      }
     } catch {
       setMessage('Could not attach the file. Please retry.');
     }
@@ -253,11 +304,12 @@ export default function AddExpenseScreen() {
         <Text style={styles.label}>
           Receipt{' '}
           <Text style={styles.muted}>
-            (optional — AI pre-fill coming later)
+            (AI Smart Scan powered by Gemini)
           </Text>
         </Text>
         <View style={styles.receiptRow}>
           <Pressable
+            disabled={analyzing}
             style={[styles.receiptButton, styles.receiptPrimary]}
             onPress={() => router.push('/receipt-camera')}
           >
@@ -265,13 +317,30 @@ export default function AddExpenseScreen() {
             <Text style={styles.receiptTitle}>Take Photo</Text>
             <Text style={styles.receiptMeta}>Use camera</Text>
           </Pressable>
-          <Pressable style={styles.receiptButton} onPress={upload}>
+          <Pressable
+            disabled={analyzing}
+            style={styles.receiptButton}
+            onPress={upload}
+          >
             <Text style={styles.receiptIcon}>⇧</Text>
             <Text style={styles.receiptTitle}>Upload File</Text>
             <Text style={styles.receiptMeta}>Image or PDF</Text>
           </Pressable>
         </View>
-        {draft.receiptUri ? (
+        {analyzing ? (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 10 }}>
+            <ActivityIndicator size="small" color="#75b6ff" />
+            <Text style={{ color: '#75b6ff', fontSize: 12 }}>
+              Analyzing receipt with Gemini Flash…
+            </Text>
+          </View>
+        ) : null}
+        {aiStatus ? (
+          <Text style={[styles.attachment, { color: aiStatus.startsWith('✓') ? '#21c985' : '#75b6ff' }]}>
+            {aiStatus}
+          </Text>
+        ) : null}
+        {draft.receiptUri && !aiStatus?.startsWith('✓') ? (
           <Text numberOfLines={1} style={styles.attachment}>
             ✓ Receipt attached: {draft.receiptUri.split('/').pop()}
           </Text>

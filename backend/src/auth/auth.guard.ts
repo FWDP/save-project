@@ -15,7 +15,7 @@ export class AuthGuard implements CanActivate {
     const path = (request.path as string).toLowerCase().replace(/\/+$/, '');
     // Network evidence and wallet callbacks remain public; private finance records do not.
     if (
-      !/^\/(transactions|budgets|categories|savings-goals|users|workspaces)(\/|$)/.test(
+      !/^\/(transactions|budgets|categories|savings-goals|users|workspaces|receipts)(\/|$)/.test(
         path,
       ) &&
       path !== '/stellar/vault/prepare'

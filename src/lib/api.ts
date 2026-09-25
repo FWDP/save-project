@@ -476,3 +476,56 @@ export function updateBudget(
 export function deleteBudget(id: string) {
   return mutateJson<{ deleted: boolean }>(`/budgets/${id}`, 'DELETE');
 }
+
+export type ApiParsedReceipt = {
+  merchant: string;
+  amount: number;
+  currency?: string;
+  date: string;
+  category?: string;
+  tax?: number;
+  notes?: string;
+  confidence?: number;
+};
+
+export async function scanReceiptWithAi(
+  imageBase64: string,
+  mimeType = 'image/jpeg',
+  categories: string[] = [],
+): Promise<ApiParsedReceipt> {
+  const url = `${getApiBaseUrl()}/receipts/scan`;
+  const token = await accessToken();
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+
+  const response = await apiFetch(url, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      imageBase64,
+      mimeType,
+      categories,
+    }),
+  });
+
+  if (!response.ok) {
+    let errMessage = `Failed to scan receipt (HTTP ${response.status})`;
+    try {
+      const errJson = await response.json();
+      if (errJson?.message) {
+        errMessage = Array.isArray(errJson.message)
+          ? errJson.message.join(', ')
+          : errJson.message;
+      }
+    } catch {
+      // fallback
+    }
+    throw new Error(errMessage);
+  }
+
+  return response.json() as Promise<ApiParsedReceipt>;
+}

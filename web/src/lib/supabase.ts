@@ -3,6 +3,8 @@ import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { cache } from "react";
+import { authCookieOptions } from "./auth-config";
+export { siteUrl } from "./auth-config";
 export const authConfigured = () =>
   Boolean(process.env.SUPABASE_URL && process.env.SUPABASE_PUBLISHABLE_KEY);
 export async function supabase() {
@@ -13,12 +15,7 @@ export async function supabase() {
     process.env.SUPABASE_URL!,
     process.env.SUPABASE_PUBLISHABLE_KEY!,
     {
-      cookieOptions: {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "lax",
-        path: "/",
-      },
+      cookieOptions: authCookieOptions(),
       cookies: {
         getAll: () => store.getAll(),
         setAll: (values) => {
@@ -49,7 +46,3 @@ export const requireSession = cache(async () => {
   if (!session) redirect("/sign-in");
   return { user, token: session.access_token };
 });
-export function siteUrl() {
-  const value = process.env.SAVE_WEB_URL || "http://localhost:3002";
-  return new URL(value).origin;
-}

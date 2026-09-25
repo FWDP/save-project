@@ -1,0 +1,18 @@
+[Unit]
+Description=SAVE Finance NestJS Backend API
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/peej/Documents/Work/FWDP/save-project/backend
+Environment=NODE_ENV=production
+Environment=PORT=3000
+EnvironmentFile=-/home/peej/Documents/Work/FWDP/save-project/backend/.env
+ExecStart=/usr/bin/node /home/peej/Documents/Work/FWDP/save-project/backend/dist/main.js
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=default.target

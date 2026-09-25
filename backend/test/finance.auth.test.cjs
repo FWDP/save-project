@@ -18,6 +18,7 @@ test('private finance routes require authentication', async () => {
     '/categories',
     '/savings-goals',
     '/users',
+    '/receipts',
     '/stellar/vault/prepare',
   ])
     await assert.rejects(new AuthGuard().canActivate(context(route)), {

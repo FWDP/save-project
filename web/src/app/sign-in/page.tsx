@@ -21,7 +21,9 @@ export default async function SignIn({
         )}
         {error && (
           <p className="notice danger" role="alert">
-            {error === "cancelled"
+            {error === "configuration"
+              ? "Sign-in is unavailable because the server's authentication key is invalid. Please contact the app administrator."
+              : error === "cancelled"
               ? "Google sign-in was cancelled. You can try again or choose another method."
               : error === "provider"
                 ? "The sign-in provider could not complete your request. Please try again."

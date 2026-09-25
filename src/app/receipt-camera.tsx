@@ -1,6 +1,8 @@
-import { persistReceipt } from '@/lib/receipt-file';
+import { persistReceipt, readReceiptAsBase64 } from '@/lib/receipt-file';
+import { scanReceiptWithAi } from '@/lib/api';
 import { useRef, useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
   Linking,
   Pressable,
@@ -14,6 +16,7 @@ import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useExpenseDraftStore } from '@/store/expense-draft-store';
+import { useFinanceStore } from '@/store/finance-store';
 
 export default function ReceiptCameraScreen() {
   const router = useRouter();
@@ -21,7 +24,9 @@ export default function ReceiptCameraScreen() {
   const [permission, requestPermission] = useCameraPermissions();
   const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [capturing, setCapturing] = useState(false);
-  const patchDraft = useExpenseDraftStore((state) => state.patchDraft);
+  const [analyzing, setAnalyzing] = useState(false);
+  const { categories } = useFinanceStore();
+  const { draft, patchDraft } = useExpenseDraftStore();
 
   const capture = async () => {
     if (!camera.current || capturing) return;
@@ -81,26 +86,72 @@ export default function ReceiptCameraScreen() {
       {photoUri ? (
         <View style={styles.confirmBar}>
           <Pressable
+            disabled={analyzing}
             style={styles.confirmButton}
             onPress={() => setPhotoUri(null)}
           >
             <Text style={styles.confirmText}>Retry</Text>
           </Pressable>
           <Pressable
-            style={styles.confirmButton}
-            onPress={() => {
+            disabled={analyzing}
+            style={[styles.confirmButton, styles.confirmButtonPrimary]}
+            onPress={async () => {
               try {
-                patchDraft({ receiptUri: persistReceipt(photoUri) });
+                const localUri = persistReceipt(photoUri);
+                patchDraft({ receiptUri: localUri });
+                setAnalyzing(true);
+                try {
+                  const base64 = await readReceiptAsBase64(localUri);
+                  const categoryNames = categories
+                    .filter((c) => c.type === draft.type)
+                    .map((c) => c.name);
+                  const parsed = await scanReceiptWithAi(
+                    base64,
+                    'image/jpeg',
+                    categoryNames,
+                  );
+
+                  const updates: Partial<typeof draft> = {};
+                  if (parsed.amount) updates.amount = parsed.amount.toString();
+                  if (parsed.merchant) updates.merchant = parsed.merchant;
+                  if (parsed.date) updates.date = parsed.date;
+                  if (parsed.notes && !draft.description)
+                    updates.description = parsed.notes;
+                  else if (parsed.merchant && !draft.description)
+                    updates.description = `Purchase at ${parsed.merchant}`;
+
+                  if (parsed.category) {
+                    const matched = categories.find(
+                      (c) =>
+                        c.name.toLowerCase() ===
+                        parsed.category?.toLowerCase(),
+                    );
+                    if (matched) updates.category = matched.name;
+                    else if (!draft.category) updates.category = parsed.category;
+                  }
+                  patchDraft(updates);
+                } catch {
+                  // If AI parsing is offline/fails, the photo remains safely attached locally
+                }
                 router.back();
               } catch {
                 Alert.alert(
                   'Attachment failed',
                   'Could not store the receipt. Please retry.',
                 );
+              } finally {
+                setAnalyzing(false);
               }
             }}
           >
-            <Text style={styles.confirmText}>OK</Text>
+            {analyzing ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <ActivityIndicator size="small" color="#ffffff" />
+                <Text style={styles.confirmText}>AI Scanning…</Text>
+              </View>
+            ) : (
+              <Text style={styles.confirmText}>Use Photo</Text>
+            )}
           </Pressable>
         </View>
       ) : (
@@ -134,7 +185,8 @@ const styles = StyleSheet.create({
     justifyContent: 'space-around',
   },
   confirmButton: { flex: 1, alignItems: 'center', padding: 18 },
-  confirmText: { color: '#fff', fontSize: 22, fontWeight: '700' },
+  confirmButtonPrimary: { backgroundColor: 'rgba(59, 130, 246, 0.4)', borderRadius: 8, marginHorizontal: 8 },
+  confirmText: { color: '#fff', fontSize: 20, fontWeight: '700' },
   captureBar: {
     height: 104,
     flexDirection: 'row',

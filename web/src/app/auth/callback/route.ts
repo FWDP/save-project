@@ -19,6 +19,15 @@ export async function GET(request: Request) {
       const { data, error } = await (
         await supabase()
       ).auth.exchangeCodeForSession(code);
+      if (error) {
+        console.error("[auth/callback] exchange failed", {
+          name: error.name,
+          status: error.status,
+          code: error.code,
+        });
+        if (error.status === 401 && /invalid api key/i.test(error.message))
+          return failure("configuration");
+      }
       if (!error && data.session) {
         const recovery =
           ("redirectType" in data && data.redirectType === "recovery") ||
@@ -29,8 +38,8 @@ export async function GET(request: Request) {
         response.headers.set("Cache-Control", "private, no-store");
         return response;
       }
-    } catch {
-      /* Render the recoverable error on the sign-in page. */
+    } catch (err) {
+      console.error("[auth/callback] Unexpected error during exchange:", err);
     }
   }
   return failure("link");
