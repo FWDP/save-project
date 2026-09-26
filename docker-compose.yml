@@ -19,9 +19,9 @@ services:
     ports:
       - '6379:6379'
 
-  minio:
-    image: minio/minio:latest
-    container_name: save-minio
+  silo:
+    image: pgsty/silo:latest
+    container_name: save-silo
     restart: unless-stopped
     command: server /data --console-address ':9001'
     ports:
@@ -30,9 +30,11 @@ services:
     environment:
       MINIO_ROOT_USER: save-access-key
       MINIO_ROOT_PASSWORD: save-secret-key
+      SILO_ROOT_USER: save-access-key
+      SILO_ROOT_PASSWORD: save-secret-key
     volumes:
-      - minio_data:/data
+      - silo_data:/data
 
 volumes:
   mongo_data:
-  minio_data:
+  silo_data:

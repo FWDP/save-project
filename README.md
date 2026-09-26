@@ -138,7 +138,7 @@ These are public Testnet identifiers, not credentials. Deployments may be replac
 - **Stellar:** `@stellar/stellar-sdk`, Horizon, Stellar RPC, WalletConnect v2, and Freighter Mobile.
 - **Smart contract:** Rust, Soroban SDK, Stellar CLI, and the SAVE Savings Vault.
 - **Admin:** Next.js 16 and React 19.
-- **Local infrastructure:** Docker Compose, MongoDB, Redis, and MinIO-compatible object storage.
+- **Local infrastructure:** Docker Compose, MongoDB, Redis, and Silo (MinIO-compatible) object storage.
 
 ## Current implementation update
 
@@ -179,7 +179,7 @@ cp admin/.env.example admin/.env.local
 
 Set `EXPO_PUBLIC_API_URL` to a backend URL reachable by the phone, such as `http://192.168.1.25:3000`. Add your public `EXPO_PUBLIC_WALLETCONNECT_PROJECT_ID`; values prefixed with `EXPO_PUBLIC_` are bundled into the client and must never contain secrets.
 
-Configure Supabase Auth using the setup guide above. Review the local MongoDB, Redis, MinIO, Stellar Testnet, callback, and contract settings in `backend/.env` before starting the API. The admin app can use `admin/.env.local` for its own API configuration.
+Configure Supabase Auth using the setup guide above. Review the local MongoDB, Redis, Silo/MinIO, Stellar Testnet, callback, and contract settings in `backend/.env` before starting the API. The admin app can use `admin/.env.local` for its own API configuration.
 
 Validate the configuration and installed tool versions before continuing:
 
@@ -193,7 +193,7 @@ npm run env:validate
 docker compose up -d
 ```
 
-This starts MongoDB on `27017`, Redis on `6379`, MinIO on `9000`, and the MinIO console on `9001`.
+This starts MongoDB on `27017`, Redis on `6379`, Silo on `9000`, and the Silo console on `9001`.
 
 ### 4. Start the applications
 
@@ -263,7 +263,7 @@ Read the [contract deployment guide](docs/CONTRACT.md) before deploying. It docu
 ├── contract/               # Soroban workspace and savings-vault contract
 ├── docs/                   # Architecture, contract, and verification evidence
 ├── scripts/                # Project utility scripts
-├── docker-compose.yml      # MongoDB, Redis, and MinIO services
+├── docker-compose.yml      # MongoDB, Redis, and Silo services
 └── eas.json                # Expo Application Services build profiles
 ```
 
