@@ -11,6 +11,10 @@ export class CreateCategoryDto {
   @IsOptional()
   @IsString()
   color?: string;
+
+  @IsOptional()
+  @IsString()
+  replacesBuiltInId?: string;
 }
 
 export class UpdateCategoryDto {

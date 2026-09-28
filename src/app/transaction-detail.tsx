@@ -1,3 +1,6 @@
+import { WorkspaceScope } from '@/components/workspace-scope';
+import { useWorkspaceFinance } from '@/components/providers/workspace-finance-provider';
+import { workspaceAmount } from '@/lib/workspace-money';
 import { useState } from 'react';
 import { Alert, Pressable, Text, TextInput, View, Linking } from 'react-native';
 import { Image } from 'expo-image';
@@ -6,13 +9,14 @@ import {
   FinancePage,
   financePageStyles as styles,
 } from '@/components/layout/finance-page';
-import { deleteTransaction, updateTransaction } from '@/lib/api';
+import { deleteTransaction, updateTransaction, saveWorkspaceTransaction, deleteWorkspaceTransaction } from '@/lib/api';
 import { validDate } from '@/lib/finance';
 import { useFinanceStore } from '@/store/finance-store';
-export default function TransactionDetail() {
+function TransactionDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-  const { transactions, setTransactions } = useFinanceStore();
+  const { transactions, workspace, personal, currency, refresh } = useWorkspaceFinance();
+  const setTransactions = useFinanceStore(state => state.setTransactions);
   const item = transactions.find((row) => row.id === id);
   const [form, setForm] = useState({
     description: item?.description ?? '',
@@ -21,6 +25,7 @@ export default function TransactionDetail() {
     category: item?.category ?? '',
     merchant: item?.merchant ?? '',
   });
+  const [revision] = useState(item?.revision);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   if (item?.syncState === 'pending')
@@ -56,6 +61,15 @@ export default function TransactionDetail() {
     }
     setBusy(true);
     try {
+      if (!personal) {
+        if (!workspace || workspace.role === 'viewer' || !revision) throw new Error('This record is not editable.');
+        await saveWorkspaceTransaction(workspace.id, {
+          type: item.type, clientMutationId: item.clientMutationId!,
+          description: form.description.trim(), category: form.category.trim(), merchant: form.merchant.trim(), date: form.date,
+          amountMinor: workspaceAmount(form.amount, currency),
+        }, { id, revision });
+        await refresh(); router.back(); return;
+      }
       const updated = await updateTransaction(id, {
         ...form,
         amount: Number(form.amount),
@@ -66,8 +80,8 @@ export default function TransactionDetail() {
           .transactions.map((row) => (row.id === id ? updated : row)),
       );
       router.back();
-    } catch {
-      setMessage('Could not save changes. Please retry.');
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : 'Could not save changes. Please retry.');
     } finally {
       setBusy(false);
     }
@@ -84,6 +98,11 @@ export default function TransactionDetail() {
           onPress: async () => {
             setBusy(true);
             try {
+              if (!personal) {
+                if (!workspace || workspace.role === 'viewer' || !revision) throw new Error('This record is not editable.');
+                await deleteWorkspaceTransaction(workspace.id, { id, revision });
+                await refresh(); router.back(); return;
+              }
               await deleteTransaction(id);
               setTransactions(
                 useFinanceStore
@@ -110,10 +129,11 @@ export default function TransactionDetail() {
           <View key={key} style={{ marginBottom: 14 }}>
             <Text style={styles.rowTitle}>
               {key === 'amount'
-                ? 'Amount (PHP)'
+                ? `Amount (${currency})`
                 : key.charAt(0).toUpperCase() + key.slice(1)}
             </Text>
             <TextInput
+              editable={!busy && workspace?.role !== 'viewer'}
               accessibilityLabel={key}
               value={form[key]}
               onChangeText={(value) => setForm({ ...form, [key]: value })}
@@ -156,13 +176,13 @@ export default function TransactionDetail() {
           {message}
         </Text>
       ) : null}
-      <Pressable disabled={busy} style={styles.primaryButton} onPress={save}>
+      <Pressable disabled={busy || workspace?.role === 'viewer'} style={styles.primaryButton} onPress={save}>
         <Text style={styles.primaryButtonText}>
           {busy ? 'Please wait…' : 'Save changes'}
         </Text>
       </Pressable>
       <Pressable
-        disabled={busy}
+        disabled={busy || workspace?.role === 'viewer'}
         onPress={remove}
         style={{ padding: 18, alignItems: 'center' }}
       >
@@ -172,4 +192,12 @@ export default function TransactionDetail() {
       </Pressable>
     </FinancePage>
   );
+}
+
+export default function ScopedTransactionDetail() {
+  const { id } = useLocalSearchParams<{ id: string }>();
+  const { isLoading, transactions } = useWorkspaceFinance();
+  return <WorkspaceScope>{isLoading && !transactions.some(item => item.id === id)
+    ? <FinancePage title="Transaction" subtitle="Loading workspace record…" />
+    : <TransactionDetail key={id} />}</WorkspaceScope>;
 }

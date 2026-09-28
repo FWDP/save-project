@@ -1,3 +1,5 @@
+import { WorkspaceScope } from '@/components/workspace-scope';
+import { useWorkspaceFinance } from '@/components/providers/workspace-finance-provider';
 import { persistReceipt, readReceiptAsBase64 } from '@/lib/receipt-file';
 import { scanReceiptWithAi } from '@/lib/api';
 import { useRef, useState } from 'react';
@@ -12,13 +14,13 @@ import {
 } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { Image } from 'expo-image';
-import { useRouter } from 'expo-router';
+import { useRouter, Redirect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useExpenseDraftStore } from '@/store/expense-draft-store';
 import { useFinanceStore } from '@/store/finance-store';
 
-export default function ReceiptCameraScreen() {
+function ReceiptCameraScreen() {
   const router = useRouter();
   const camera = useRef<CameraView>(null);
   const [permission, requestPermission] = useCameraPermissions();
@@ -96,8 +98,9 @@ export default function ReceiptCameraScreen() {
             disabled={analyzing}
             style={[styles.confirmButton, styles.confirmButtonPrimary]}
             onPress={async () => {
+              setAnalyzing(true);
               try {
-                const localUri = persistReceipt(photoUri);
+                const localUri = await persistReceipt(photoUri);
                 patchDraft({ receiptUri: localUri });
                 setAnalyzing(true);
                 try {
@@ -230,3 +233,8 @@ const styles = StyleSheet.create({
   permissionButtonText: { color: '#07111f', fontWeight: '800' },
   cancelText: { color: '#aeb9cb' },
 });
+
+export default function ScopedEntry() {
+  const { personal } = useWorkspaceFinance();
+  return <WorkspaceScope write>{personal ? <ReceiptCameraScreen /> : <Redirect href={{ pathname: '/workspaces', params: { add: '1' } }} />}</WorkspaceScope>;
+}

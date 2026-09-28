@@ -463,3 +463,32 @@ test("currency validation rejects unknown codes and workspace currency is immuta
   assert.ok(errors.some((e) => e.property === "currency"));
   assert.equal(WorkspaceSchema.path("currency").options.immutable, true);
 });
+
+test("existing workspace memberships are identical for Web and Mobile and isolated per account", async () => {
+  const rows = [
+    { _id: new Types.ObjectId(), name: 'Existing personal', kind: 'personal', currency: 'PHP', timezone: 'Asia/Manila', ownerId: 'alice', members: [{ userId: 'alice', role: 'owner', status: 'active' }] },
+    { _id: new Types.ObjectId(), name: 'Existing shared business', kind: 'business', currency: 'USD', timezone: 'Asia/Manila', ownerId: 'alice', members: [{ userId: 'alice', role: 'owner', status: 'active' }, { userId: 'bob', role: 'finance', status: 'active' }] },
+    { _id: new Types.ObjectId(), name: 'Other personal', kind: 'personal', currency: 'PHP', timezone: 'Asia/Manila', ownerId: 'bob', members: [{ userId: 'bob', role: 'owner', status: 'active' }, { userId: 'alice', role: 'viewer', status: 'suspended' }] },
+    { _id: new Types.ObjectId(), name: 'Unrelated', kind: 'business', currency: 'PHP', timezone: 'Asia/Manila', ownerId: 'carol', members: [{ userId: 'carol', role: 'owner', status: 'active' }] },
+  ];
+  const service = new WorkspacesService({
+    find(filter) {
+      const { userId, status } = filter.members.$elemMatch;
+      assert.equal(status, 'active');
+      return { sort: () => ({ lean: async () => rows.filter(row => row.members.some(member => member.userId === userId && member.status === status)) }) };
+    },
+  }, {}, personalTransactionService());
+  const [aliceWeb, bobMobile, aliceMobile] = await Promise.all([
+    actor('alice', () => service.list()), actor('bob', () => service.list()), actor('alice', () => service.list()),
+  ]);
+  assert.deepEqual(aliceWeb, aliceMobile);
+  assert.deepEqual(aliceMobile.map(row => row.id), rows.slice(0, 2).map(row => String(row._id)));
+  assert.deepEqual(bobMobile.map(row => row.id), rows.slice(1, 3).map(row => String(row._id)));
+  assert.equal(aliceMobile[1].role, 'owner');
+  assert.equal(bobMobile[0].role, 'finance');
+  assert.deepEqual(await actor('new-account', () => service.list()), []);
+  rows[1].members[1].status = 'suspended';
+  assert.deepEqual((await actor('bob', () => service.list())).map(row => row.id), [String(rows[2]._id)]);
+  rows[3].members.push({ userId: 'bob', role: 'viewer', status: 'active' });
+  assert.deepEqual((await actor('bob', () => service.list())).map(row => row.id), [String(rows[2]._id), String(rows[3]._id)]);
+});

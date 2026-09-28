@@ -8,6 +8,8 @@ import { useExpenseDraftStore } from '@/store/expense-draft-store';
 
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
 import { FinanceDataProvider } from '@/components/providers/finance-data-provider';
+import { WorkspaceProvider } from '@/components/providers/workspace-provider';
+import { WorkspaceFinanceProvider } from '@/components/providers/workspace-finance-provider';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -57,6 +59,8 @@ export default function TabLayout() {
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
       <AnimatedSplashOverlay />
       <FinanceDataProvider key={account ?? 'signed-out'} userId={account}>
+        <WorkspaceProvider>
+        <WorkspaceFinanceProvider>
         <Stack
           screenOptions={{
             headerShown: false,
@@ -67,6 +71,7 @@ export default function TabLayout() {
             <Stack.Screen name="(tabs)" />
             <Stack.Screen name="settings" />
             <Stack.Screen name="transactions" />
+            <Stack.Screen name="workspaces" />
             <Stack.Screen name="transaction-detail" />
             <Stack.Screen name="reports" />
             <Stack.Screen name="categories" />
@@ -84,6 +89,8 @@ export default function TabLayout() {
           </Stack.Protected>
           <Stack.Screen name="auth/callback" />
         </Stack>
+        </WorkspaceFinanceProvider>
+        </WorkspaceProvider>
       </FinanceDataProvider>
     </ThemeProvider>
   );

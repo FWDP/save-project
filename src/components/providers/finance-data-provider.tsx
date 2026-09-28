@@ -1,22 +1,22 @@
-import { flushTransactions } from '@/lib/transaction-writes';
-import { AppState } from 'react-native';
-import {
-  type PropsWithChildren,
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useRef,
-} from 'react';
 import { fetchBudgets, fetchCategories, fetchTransactions } from '@/lib/api';
 import {
-  initializeDatabase,
-  loadAccountCache,
-  saveAccountCache,
-  clearPrivateCache,
-  pendingTransactions,
+    clearPrivateCache,
+    initializeDatabase,
+    loadAccountCache,
+    pendingTransactions,
+    saveAccountCache,
 } from '@/lib/sqlite';
+import { flushTransactions } from '@/lib/transaction-writes';
 import { useFinanceStore } from '@/store/finance-store';
+import {
+    type PropsWithChildren,
+    createContext,
+    useCallback,
+    useContext,
+    useEffect,
+    useRef,
+} from 'react';
+import { AppState } from 'react-native';
 
 const RefreshContext = createContext<() => Promise<void>>(async () => {});
 export const useRefreshFinance = () => useContext(RefreshContext);
@@ -24,64 +24,72 @@ export function FinanceDataProvider({
   children,
   userId,
 }: PropsWithChildren<{ userId: string | null }>) {
-  const busy = useRef(false);
+  const inFlight = useRef<Promise<void> | null>(null);
   const active = useRef(true);
   const refresh = useCallback(async () => {
-    if (!userId || busy.current) return;
-    busy.current = true;
-    useFinanceStore.getState().setLoading(true);
-    try {
-      await flushTransactions(userId);
-      if (!active.current) return;
-      const initial = useFinanceStore.getState();
-      // Apply one coherent snapshot; partial results must not mix periods or budgets.
-      const [transactions, budgets, categories] = await Promise.all([
-        fetchTransactions(),
-        fetchBudgets(),
-        fetchCategories(),
-      ]);
-      if (
-        !active.current ||
-        useFinanceStore.getState().transactions !== initial.transactions ||
-        useFinanceStore.getState().budgets !== initial.budgets ||
-        useFinanceStore.getState().categories !== initial.categories
-      )
-        return;
-      const state = useFinanceStore.getState();
-      state.setTransactions([...pendingTransactions(userId), ...transactions]);
-      state.setBudgets(budgets);
-      state.setCategories(categories);
+    if (!userId) return;
+    while (inFlight.current) await inFlight.current;
+
+    const request = (async () => {
+      useFinanceStore.getState().setLoading(true);
       try {
-        saveAccountCache(userId, { transactions, budgets, categories });
-      } catch {
-        /* Live data remains available. */
-      }
-      state.setSyncState(null, new Date().toISOString());
-    } catch {
-      if (active.current) {
+        await flushTransactions(userId);
+        if (!active.current) return;
+        const initial = useFinanceStore.getState();
+        // Apply one coherent snapshot; partial results must not mix periods or budgets.
+        const [transactions, budgets, categories] = await Promise.all([
+          fetchTransactions(),
+          fetchBudgets(),
+          fetchCategories(),
+        ]);
+        if (
+          !active.current ||
+          useFinanceStore.getState().transactions !== initial.transactions ||
+          useFinanceStore.getState().budgets !== initial.budgets ||
+          useFinanceStore.getState().categories !== initial.categories
+        )
+          return;
         const state = useFinanceStore.getState();
-        let pending: ReturnType<typeof pendingTransactions> = [];
+        state.setTransactions([...pendingTransactions(userId), ...transactions]);
+        state.setBudgets(budgets);
+        state.setCategories(categories);
         try {
-          pending = pendingTransactions(userId);
+          saveAccountCache(userId, { transactions, budgets, categories });
         } catch {
-          pending = state.transactions.filter(
-            (item) => item.syncState === 'pending',
+          /* Live data remains available. */
+        }
+        state.setSyncState(null, new Date().toISOString());
+      } catch {
+        if (active.current) {
+          const state = useFinanceStore.getState();
+          let pending: ReturnType<typeof pendingTransactions> = [];
+          try {
+            pending = pendingTransactions(userId);
+          } catch {
+            pending = state.transactions.filter(
+              (item) => item.syncState === 'pending',
+            );
+          }
+          const current = state.transactions.filter(
+            (item) => item.syncState !== 'pending',
+          );
+          state.setTransactions([...pending, ...current]);
+          state.setSyncState(
+            pending.length
+              ? `${pending.length} transaction(s) saved on this device, awaiting upload. Retry when connected.`
+              : 'Could not sync. Showing your last loaded data.',
+            state.lastUpdatedAt,
           );
         }
-        const current = state.transactions.filter(
-          (item) => item.syncState !== 'pending',
-        );
-        state.setTransactions([...pending, ...current]);
-        state.setSyncState(
-          pending.length
-            ? `${pending.length} transaction(s) saved on this device, awaiting upload. Retry when connected.`
-            : 'Could not sync. Showing your last loaded data.',
-          state.lastUpdatedAt,
-        );
+      } finally {
+        if (active.current) useFinanceStore.getState().setLoading(false);
       }
+    })();
+    inFlight.current = request;
+    try {
+      await request;
     } finally {
-      if (active.current) useFinanceStore.getState().setLoading(false);
-      busy.current = false;
+      if (inFlight.current === request) inFlight.current = null;
     }
   }, [userId]);
   useEffect(() => {

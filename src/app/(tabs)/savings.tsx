@@ -1,3 +1,4 @@
+import { WorkspaceScope } from '@/components/workspace-scope';
 import { DateField } from '@/components/date-field';
 import { validDate } from '@/lib/finance';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -24,7 +25,7 @@ import {
   type ApiSavingsGoal,
 } from '@/lib/api';
 
-export default function SavingsScreen() {
+function SavingsScreen() {
   const router = useRouter();
   const [goals, setGoals] = useState<ApiSavingsGoal[]>([]);
   const [loading, setLoading] = useState(true);
@@ -611,3 +612,5 @@ const localStyles = StyleSheet.create({
     color: '#55a6ff',
   },
 });
+
+export default function ScopedPage() { return <WorkspaceScope personalOnly><SavingsScreen /></WorkspaceScope>; }

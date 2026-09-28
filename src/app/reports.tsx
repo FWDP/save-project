@@ -4,8 +4,10 @@ import { useMemo, useState } from 'react';
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { FinancePage } from '@/components/layout/finance-page';
+import { workspaceTransactionsCsv } from '@/lib/workspace-records';
 import type { ApiTransaction } from '@/lib/api';
-import { useFinanceStore } from '@/store/finance-store';
+import { useWorkspaceFinance } from '@/components/providers/workspace-finance-provider';
+import { WorkspaceScope } from '@/components/workspace-scope';
 
 type PeriodKey = 'month' | 'lastMonth' | 'threeMonths' | 'sixMonths' | 'year';
 const PERIODS: { key: PeriodKey; label: string }[] = [
@@ -15,9 +17,6 @@ const PERIODS: { key: PeriodKey; label: string }[] = [
   { key: 'sixMonths', label: 'Last 6 months' },
   { key: 'year', label: 'Year to date' },
 ];
-
-const money = (value: number) =>
-  `₱${value.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 function rangeFor(key: PeriodKey, selectedMonth: string) {
   const now = new Date(`${selectedMonth}-15T12:00:00`);
@@ -108,8 +107,10 @@ function stats(items: ApiTransaction[]) {
   };
 }
 
-export default function ReportsScreen() {
-  const { transactions, selectedMonth } = useFinanceStore();
+function ReportsScreen() {
+  const { currency, workspace, isLoading, syncError } = useWorkspaceFinance();
+  const money = (value: number) => new Intl.NumberFormat('en-PH', { style: 'currency', currency }).format(value);
+  const { transactions, selectedMonth } = useWorkspaceFinance();
   const [mode, setMode] = useState<'single' | 'compare'>('single');
   const [periodA, setPeriodA] = useState<PeriodKey>('month');
   const [periodB, setPeriodB] = useState<PeriodKey>('lastMonth');
@@ -136,26 +137,8 @@ export default function ReportsScreen() {
   );
 
   const exportCsv = async () => {
-    const escape = (value: unknown) =>
-      `"${String(value ?? '').replaceAll('"', '""')}"`;
-    const csv = [
-      'date,type,amount,category,description,merchant,tags',
-      ...transactions
-        .filter((item) => inPeriod(item, periodA, selectedMonth))
-        .map((item) =>
-          [
-            item.date,
-            item.type,
-            item.amount,
-            item.category,
-            item.description,
-            item.merchant,
-            item.tags?.join('|'),
-          ]
-            .map(escape)
-            .join(','),
-        ),
-    ].join('\n');
+    if (!workspace || isLoading || syncError) return;
+    const csv = workspaceTransactionsCsv(transactions.filter(item => inPeriod(item, periodA, selectedMonth)), workspace);
 
     try {
       await exportFile(`save-report-${periodA}.csv`, csv, 'text/csv');
@@ -185,7 +168,7 @@ export default function ReportsScreen() {
             <Text style={styles.tabText}>Compare</Text>
           </Pressable>
         </View>
-        <Pressable style={styles.export} onPress={exportCsv}>
+        <Pressable disabled={isLoading || !!syncError} style={styles.export} onPress={exportCsv}>
           <Text style={styles.exportText}>⇩ Export CSV</Text>
         </Pressable>
       </View>
@@ -341,6 +324,8 @@ function CompareSummary({
   a: ReturnType<typeof stats>;
   b: ReturnType<typeof stats>;
 }) {
+  const { currency } = useWorkspaceFinance();
+  const money = (value: number) => new Intl.NumberFormat('en-PH', { style: 'currency', currency }).format(value);
   const rows: [string, number, number, (n: number) => string][] = [
     ['Total Spent', a.total, b.total, money],
     ['Transactions', a.count, b.count, String],
@@ -466,3 +451,5 @@ const styles = StyleSheet.create({
   positive: { color: '#28ca83' },
   negative: { color: '#f05c70' },
 });
+
+export default function ScopedReports() { return <WorkspaceScope><ReportsScreen /></WorkspaceScope>; }

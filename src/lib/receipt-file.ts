@@ -1,7 +1,7 @@
 import { File, Paths, Directory } from 'expo-file-system';
 import { randomUUID } from 'expo-crypto';
 import { Platform } from 'react-native';
-export function persistReceipt(uri: string) {
+export async function persistReceipt(uri: string) {
   if (Platform.OS === 'web') return uri;
   const folder = new Directory(Paths.document, 'receipts');
   folder.create({ idempotent: true, intermediates: true });
@@ -10,7 +10,7 @@ export function persistReceipt(uri: string) {
     folder,
     `${randomUUID()}.${extension && /^[a-zA-Z0-9]+$/.test(extension) ? extension : 'jpg'}`,
   );
-  new File(uri).copy(file);
+  await new File(uri).copy(file);
   return file.uri;
 }
 
@@ -30,12 +30,5 @@ export async function readReceiptAsBase64(uri: string): Promise<string> {
   }
 
   const file = new File(uri);
-  const buffer = await file.arrayBuffer();
-  const bytes = new Uint8Array(buffer);
-  let binary = '';
-  const len = bytes.byteLength;
-  for (let i = 0; i < len; i++) {
-    binary += String.fromCharCode(bytes[i]);
-  }
-  return btoa(binary);
+  return file.base64();
 }

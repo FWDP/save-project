@@ -1,5 +1,6 @@
 import { useRouter } from 'expo-router';
-import { merchantTotals } from '@/lib/finance';
+import { budgetSpent, merchantTotals } from '@/lib/finance';
+import { currencyDigits } from '@/lib/workspace-money';
 import { useMemo } from 'react';
 import {
   Pressable,
@@ -19,6 +20,10 @@ type DashboardTotals = {
 
 type SaveDashboardProps = {
   monthKey: string;
+  workspaceName?: string;
+  currency?: string;
+  showBudgets?: boolean;
+  onTransactionPress?: (id: string) => void;
   transactions: ApiTransaction[];
   budgets: ApiBudget[];
   totals: DashboardTotals;
@@ -50,17 +55,6 @@ const categoryColors = [
   palette.pink,
   '#19a9dc',
 ];
-
-const peso = new Intl.NumberFormat('en-PH', {
-  style: 'currency',
-  currency: 'PHP',
-  minimumFractionDigits: 2,
-  maximumFractionDigits: 2,
-});
-
-function formatPeso(value: number) {
-  return peso.format(value).replace('PHP', '₱');
-}
 
 function MetricCard({
   label,
@@ -115,6 +109,10 @@ function SectionCard({
 
 export function SaveDashboard({
   monthKey,
+  workspaceName = 'Personal finances',
+  currency = 'PHP',
+  showBudgets = true,
+  onTransactionPress,
   budgets,
   transactions,
   totals,
@@ -122,6 +120,7 @@ export function SaveDashboard({
   syncMessage,
 }: SaveDashboardProps) {
   const router = useRouter();
+  const formatMoney = (value: number) => new Intl.NumberFormat('en-PH', { style: 'currency', currency }).format(value);
   const { width } = useWindowDimensions();
   const isWide = width >= 760;
   const month = useMemo(() => new Date(`${monthKey}-15T12:00:00`), [monthKey]);
@@ -178,8 +177,8 @@ export function SaveDashboard({
   }, [currentMonthStr, expenses]);
 
   const topMerchants = useMemo(
-    () => merchantTotals(expenses).slice(0, 5),
-    [expenses],
+    () => merchantTotals(expenses, currencyDigits(currency)).slice(0, 5),
+    [expenses, currency],
   );
 
   const spentDates = useMemo(
@@ -208,7 +207,14 @@ export function SaveDashboard({
   ];
   const selectedDay = Math.max(...spentDates, 1);
   const budgetTotal = budgets.reduce((sum, budget) => sum + budget.limit, 0);
-  const spendPercent = budgetTotal ? (totals.expenses / budgetTotal) * 100 : 0;
+  // Compare only spending in categories that actually have a budget. Expenses
+  // in unbudgeted categories remain visible elsewhere but cannot inflate this
+  // budget progress indicator.
+  const budgetedSpent = budgets.reduce(
+    (sum, budget) => sum + budgetSpent(budget, transactions, currentMonthStr),
+    0,
+  );
+  const spendPercent = budgetTotal ? (budgetedSpent / budgetTotal) * 100 : 0;
   const maxCategorySpend = Math.max(
     ...spendingByCategory.map(([, amount]) => amount),
     1,
@@ -227,28 +233,28 @@ export function SaveDashboard({
       <View style={styles.pageHeading}>
         <Text style={styles.pageTitle}>Dashboard</Text>
         <Text style={styles.pageSubtitle}>
-          Personal finances — {monthLabel}
+          {workspaceName} · {currency} — {monthLabel}
         </Text>
       </View>
 
       <View style={[styles.metricGrid, isWide && styles.metricGridWide]}>
         <MetricCard
           label="Total income"
-          value={formatPeso(totals.income)}
+          value={formatMoney(totals.income)}
           accent={palette.text}
           icon="↗"
           note="Money received"
         />
         <MetricCard
           label="Total expenses"
-          value={formatPeso(totals.expenses)}
+          value={formatMoney(totals.expenses)}
           accent={palette.text}
           icon="↘"
           note="Money spent"
         />
         <MetricCard
           label="Net balance"
-          value={formatPeso(totals.balance)}
+          value={formatMoney(totals.balance)}
           accent={totals.balance < 0 ? palette.red : palette.green}
           icon="▣"
           note={
@@ -264,7 +270,7 @@ export function SaveDashboard({
         />
       </View>
 
-      <View style={styles.pacingCard}>
+      {showBudgets ? <View style={styles.pacingCard}>
         <View style={styles.pacingHeader}>
           <View style={styles.pacingIcon}>
             <Text style={styles.pacingIconText}>⌁</Text>
@@ -272,7 +278,7 @@ export function SaveDashboard({
           <View style={styles.pacingText}>
             <Text style={styles.pacingTitle}>Monthly budget</Text>
             <Text style={styles.pacingMeta}>
-              {formatPeso(totals.expenses)} spent · {Math.round(spendPercent)}%
+              {formatMoney(budgetedSpent)} spent · {Math.round(spendPercent)}%
               of budget
             </Text>
           </View>
@@ -282,8 +288,8 @@ export function SaveDashboard({
             {!budgetTotal
               ? 'Set a monthly budget to track your spending'
               : spendPercent > 100
-                ? `${formatPeso(totals.expenses - budgetTotal)} over budget`
-                : `${formatPeso(budgetTotal - totals.expenses)} remaining this month`}
+                ? `${formatMoney(budgetedSpent - budgetTotal)} over budget`
+                : `${formatMoney(budgetTotal - budgetedSpent)} remaining this month`}
           </Text>
         </View>
         <View style={styles.progressTrack}>
@@ -296,13 +302,13 @@ export function SaveDashboard({
         </View>
         <View style={styles.progressLabels}>
           <Text style={styles.progressLabel}>
-            {formatPeso(totals.expenses)} spent
+            {formatMoney(budgetedSpent)} spent
           </Text>
           <Text style={styles.progressLabel}>
-            Budget: {formatPeso(budgetTotal)}
+            Budget: {formatMoney(budgetTotal)}
           </Text>
         </View>
-      </View>
+      </View> : null}
 
       <SectionCard title="Recent transactions">
         {[...transactions]
@@ -318,7 +324,7 @@ export function SaveDashboard({
                 borderColor: palette.border,
               }}
               onPress={() =>
-                router.push({
+                onTransactionPress ? onTransactionPress(item.id) : router.push({
                   pathname: '/transaction-detail',
                   params: { id: item.id },
                 })
@@ -340,7 +346,7 @@ export function SaveDashboard({
                       item.type === 'income' ? palette.green : palette.text,
                   }}
                 >
-                  {formatPeso(item.amount)}
+                  {formatMoney(item.amount)}
                 </Text>
               </View>
               <Text style={{ color: palette.muted, marginTop: 5 }}>
@@ -468,7 +474,7 @@ export function SaveDashboard({
                   {transaction.name}
                 </Text>
                 <Text style={styles.merchantAmount}>
-                  {formatPeso(transaction.amount)} · {transaction.count}×
+                  {formatMoney(transaction.amount)} · {transaction.count}×
                 </Text>
               </View>
               <View style={styles.merchantTrack}>
@@ -488,7 +494,7 @@ export function SaveDashboard({
         )}
       </SectionCard>
 
-      <SectionCard title="Budget Progress">
+      {showBudgets ? <SectionCard title="Budget Progress">
         {budgets.map((budget, index) => {
           const used = categorySpentMap.has(budget.category)
             ? (categorySpentMap.get(budget.category) ?? 0)
@@ -505,7 +511,7 @@ export function SaveDashboard({
                   <Text style={styles.budgetName}>{budget.category}</Text>
                 </View>
                 <Text style={styles.budgetAmount}>
-                  {formatPeso(used)} / {formatPeso(budget.limit)}
+                  {formatMoney(used)} / {formatMoney(budget.limit)}
                 </Text>
               </View>
               <View style={styles.budgetMeta}>
@@ -531,7 +537,7 @@ export function SaveDashboard({
         {!budgets.length ? (
           <Text style={styles.emptyText}>No budget data is available yet.</Text>
         ) : null}
-      </SectionCard>
+      </SectionCard> : null}
     </View>
   );
 }

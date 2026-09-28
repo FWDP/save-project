@@ -1,5 +1,6 @@
-import { useRefreshFinance } from '@/components/providers/finance-data-provider';
-import { type PropsWithChildren, useState } from 'react';
+import { useWorkspaceFinance } from '@/components/providers/workspace-finance-provider';
+import { useRouter, useFocusEffect } from 'expo-router';
+import { type PropsWithChildren, useState, useCallback } from 'react';
 import {
   Pressable,
   RefreshControl,
@@ -10,7 +11,6 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { useFinanceStore } from '@/store/finance-store';
 import { AppSidebar } from '@/components/navigation/app-sidebar';
 
 export function FinancePage({
@@ -19,15 +19,20 @@ export function FinancePage({
   subtitle,
   scroll = true,
   showSync = true,
+  onRefresh,
+  refreshing,
 }: PropsWithChildren<{
   title: string;
   subtitle: string;
   scroll?: boolean;
   showSync?: boolean;
+  onRefresh?: () => Promise<void>;
+  refreshing?: boolean;
 }>) {
-  const refresh = useRefreshFinance();
+  const { refresh, workspace, isLoading, lastUpdatedAt, syncError } = useWorkspaceFinance();
+  const router = useRouter();
+  useFocusEffect(useCallback(() => { void refresh(); }, [refresh]));
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const { isLoading, lastUpdatedAt, syncError } = useFinanceStore();
   const updatedLabel = lastUpdatedAt
     ? new Date(lastUpdatedAt).toLocaleTimeString([], {
         hour: '2-digit',
@@ -48,6 +53,9 @@ export function FinancePage({
         <View style={styles.headerText}>
           <Text style={styles.title}>{title}</Text>
           <Text style={styles.subtitle}>{subtitle}</Text>
+          <Pressable accessibilityRole="button" onPress={() => router.push('/workspaces')} style={{ paddingVertical: 8 }}>
+            <Text style={{ color: '#75b6ff' }}>{workspace?.name ?? 'Choose workspace'}{workspace ? ` · ${workspace.currency}` : ''} ⌄</Text>
+          </Pressable>
           {showSync && (
             <Text style={[styles.sync, syncError && styles.syncError]}>
               {isLoading
@@ -74,8 +82,8 @@ export function FinancePage({
           <ScrollView
             refreshControl={
               <RefreshControl
-                refreshing={isLoading}
-                onRefresh={refresh}
+                refreshing={refreshing ?? isLoading}
+                onRefresh={onRefresh ?? refresh}
                 tintColor="#55a6ff"
               />
             }

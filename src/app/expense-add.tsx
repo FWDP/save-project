@@ -1,3 +1,5 @@
+import { WorkspaceScope } from '@/components/workspace-scope';
+import { useWorkspaceFinance } from '@/components/providers/workspace-finance-provider';
 import { useRefreshFinance } from '@/components/providers/finance-data-provider';
 import { persistReceipt, readReceiptAsBase64 } from '@/lib/receipt-file';
 import { scanReceiptWithAi } from '@/lib/api';
@@ -14,14 +16,14 @@ import {
   View,
 } from 'react-native';
 import { File } from 'expo-file-system';
-import { useRouter } from 'expo-router';
+import { useRouter, Redirect } from 'expo-router';
 
 import { FinancePage } from '@/components/layout/finance-page';
 import { saveTransactionDraft } from '@/lib/transaction-writes';
 import { useExpenseDraftStore } from '@/store/expense-draft-store';
 import { useFinanceStore } from '@/store/finance-store';
 
-export default function AddExpenseScreen() {
+function AddExpenseScreen() {
   const router = useRouter();
   const refresh = useRefreshFinance();
   const { categories, setTransactions } = useFinanceStore();
@@ -92,18 +94,22 @@ export default function AddExpenseScreen() {
       ),
     });
   const upload = async () => {
+    setMessage(null);
+    setAnalyzing(true);
     try {
       const selected = await File.pickFileAsync({
         mimeTypes: ['image/*', 'application/pdf'],
       });
       if (!selected.canceled) {
-        const localUri = persistReceipt(selected.result.uri);
+        const localUri = await persistReceipt(selected.result.uri);
         patchDraft({ receiptUri: localUri });
-        const mimeType = (selected.result as any).mimeType || 'image/jpeg';
+        const mimeType = selected.result.type || 'image/jpeg';
         await processReceiptWithAi(localUri, mimeType);
       }
     } catch {
       setMessage('Could not attach the file. Please retry.');
+    } finally {
+      setAnalyzing(false);
     }
   };
   const submit = async () => {
@@ -532,3 +538,8 @@ const styles = StyleSheet.create({
   },
   submitText: { color: '#07111f', fontWeight: '800' },
 });
+
+export default function ScopedEntry() {
+  const { personal } = useWorkspaceFinance();
+  return <WorkspaceScope write>{personal ? <AddExpenseScreen /> : <Redirect href={{ pathname: '/workspaces', params: { add: '1' } }} />}</WorkspaceScope>;
+}

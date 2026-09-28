@@ -44,13 +44,19 @@ export function budgetSpent(
   items: ApiTransaction[],
   month: string,
 ) {
-  return totalsFor(
-    monthTransactions(items, month).filter(
-      (t) => t.category === budget.category,
-    ),
-  ).expenses;
+  const normalize = (value: string) => {
+    const clean = value.trim().toLocaleLowerCase();
+    return [clean, clean.split('/').pop()?.trim() ?? clean];
+  };
+  const category = normalize(budget.category);
+  return monthTransactions(items, month)
+    .filter(
+      (t) => t.type === 'expense' && normalize(t.category).some(value => category.includes(value)),
+    )
+    .reduce((sum, transaction) => sum + transaction.amount, 0);
 }
-export function merchantTotals(items: ApiTransaction[]) {
+export function merchantTotals(items: ApiTransaction[], fractionDigits = 2) {
+  const scale = 10 ** fractionDigits;
   const merchants = new Map<
     string,
     { name: string; amount: number; count: number }
@@ -61,12 +67,12 @@ export function merchantTotals(items: ApiTransaction[]) {
     const previous = merchants.get(key) ?? { name, amount: 0, count: 0 };
     merchants.set(key, {
       ...previous,
-      amount: previous.amount + Math.round(item.amount * 100),
+      amount: previous.amount + Math.round(item.amount * scale),
       count: previous.count + 1,
     });
   }
   return [...merchants.values()]
-    .map((item) => ({ ...item, amount: item.amount / 100 }))
+    .map((item) => ({ ...item, amount: item.amount / scale }))
     .sort((a, b) => b.amount - a.amount);
 }
 

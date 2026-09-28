@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Pressable,
   StyleSheet,
@@ -11,20 +11,46 @@ import {
 import { useRouter } from 'expo-router';
 import { FinancePage } from '@/components/layout/finance-page';
 import { MonthPicker } from '@/components/month-picker';
-import { useRefreshFinance } from '@/components/providers/finance-data-provider';
+import { useWorkspaceFinance } from '@/components/providers/workspace-finance-provider';
+import { WorkspaceScope } from '@/components/workspace-scope';
 import { monthTransactions } from '@/lib/finance';
-import { useFinanceStore } from '@/store/finance-store';
+import { fetchWorkspaceTransactions, type ApiTransaction } from '@/lib/api';
+import { workspaceTransaction } from '@/lib/workspace-records';
 
-export default function TransactionsScreen() {
+function TransactionsScreen() {
   const router = useRouter();
-  const { transactions, selectedMonth, isLoading } = useFinanceStore();
-  const refresh = useRefreshFinance();
+  const { transactions, selectedMonth, isLoading, refresh, currency, workspace } = useWorkspaceFinance();
+  const [monthRows, setMonthRows] = useState<ApiTransaction[] | null>(null);
+  const [monthLoading, setMonthLoading] = useState(false);
+  useEffect(() => {
+    let active = true;
+    const loadMonth = async () => {
+      if (!workspace) { setMonthRows(null); return; }
+      setMonthLoading(true);
+      try {
+        const first = await fetchWorkspaceTransactions(workspace.id, 1, selectedMonth);
+        const rows = [...first.items];
+        for (let page = 2; page <= Math.ceil(first.total / first.pageSize); page++) {
+          const next = await fetchWorkspaceTransactions(workspace.id, page, selectedMonth);
+          rows.push(...next.items);
+        }
+        if (active) setMonthRows(rows.map(row => workspaceTransaction(row, workspace.currency)));
+      } catch {
+        if (active) setMonthRows(null);
+      } finally {
+        if (active) setMonthLoading(false);
+      }
+    };
+    void loadMonth();
+    return () => { active = false; };
+  }, [workspace, selectedMonth]);
+  const visibleTransactions = monthRows ?? monthTransactions(transactions, selectedMonth);
   const [search, setSearch] = useState('');
   const [type, setType] = useState<'all' | 'expense' | 'income'>('all');
   const [ascending, setAscending] = useState(false);
   const filtered = useMemo(
     () =>
-      monthTransactions(transactions, selectedMonth)
+      visibleTransactions
         .filter((item) => type === 'all' || item.type === type)
         .filter((item) =>
           [
@@ -41,7 +67,7 @@ export default function TransactionsScreen() {
             ? a.date.localeCompare(b.date)
             : b.date.localeCompare(a.date),
         ),
-    [transactions, selectedMonth, type, search, ascending],
+    [visibleTransactions, type, search, ascending],
   );
   const sections = useMemo(() => {
     const groups = new Map<string, typeof filtered>();
@@ -62,7 +88,7 @@ export default function TransactionsScreen() {
         stickySectionHeadersEnabled={false}
         refreshControl={
           <RefreshControl
-            refreshing={isLoading}
+            refreshing={isLoading || monthLoading}
             onRefresh={refresh}
             tintColor="#55a6ff"
           />
@@ -71,6 +97,7 @@ export default function TransactionsScreen() {
           <View style={styles.header}>
             <MonthPicker />
             <Pressable
+              disabled={workspace?.role === 'viewer'}
               style={styles.add}
               onPress={() => router.push('/expense-add')}
             >
@@ -144,17 +171,13 @@ export default function TransactionsScreen() {
             <Text
               style={[styles.amount, item.type === 'income' && styles.income]}
             >
-              {item.type === 'income' ? '+' : '−'}₱
-              {item.amount.toLocaleString('en-PH', {
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2,
-              })}
+              {item.type === 'income' ? '+' : '−'}{new Intl.NumberFormat('en-PH', { style: 'currency', currency }).format(item.amount)}
             </Text>
           </Pressable>
         )}
         ListEmptyComponent={
           <Text style={styles.empty}>
-            {isLoading
+            {isLoading || monthLoading
               ? 'Loading transactions…'
               : search
                 ? 'No matches. Try a different search.'
@@ -209,3 +232,5 @@ const styles = StyleSheet.create({
     lineHeight: 24,
   },
 });
+
+export default function ScopedTransactions() { return <WorkspaceScope><TransactionsScreen /></WorkspaceScope>; }

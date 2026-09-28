@@ -70,7 +70,7 @@
     "env:validate": "node scripts/validate-env.mjs",
     "health:testnet": "node scripts/health-check.mjs",
     "verify": "npm run env:validate && npm run lint && npm run typecheck && npm test && npm run backend:lint && npm --prefix backend test && npm run admin:lint && npm run admin:build && npm run contract:check",
-    "test": "node tests/finance.test.cjs && node tests/transfers.test.cjs && node tests/outbox.test.cjs && node tests/web-format.test.cjs && node tests/web-auth.test.cjs",
+    "test": "node tests/finance.test.cjs && node tests/transfers.test.cjs && node tests/outbox.test.cjs && node tests/web-format.test.cjs && node tests/web-auth.test.cjs && node tests/mobile-workspaces.test.cjs",
     "web:dev": "npm --prefix web run dev",
     "web:build": "npm --prefix web run build",
     "web:lint": "npm --prefix web run lint",

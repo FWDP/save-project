@@ -1,3 +1,6 @@
+import { WorkspaceScope } from '@/components/workspace-scope';
+import { WorkspaceSettings } from '@/components/workspace-settings';
+import { useWorkspaceFinance } from '@/components/providers/workspace-finance-provider';
 import { useEffect, useState } from 'react';
 import { Alert, Pressable, Text, View } from 'react-native';
 import { File } from 'expo-file-system';
@@ -31,7 +34,7 @@ import {
 import { validDate } from '@/lib/finance';
 import { useRefreshFinance } from '@/components/providers/finance-data-provider';
 
-export default function SettingsScreen() {
+function SettingsScreen() {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
@@ -437,4 +440,9 @@ function Button({
       <Text style={styles.primaryButtonText}>{label}</Text>
     </Pressable>
   );
+}
+
+export default function ScopedSettings() {
+  const { personal } = useWorkspaceFinance();
+  return personal ? <WorkspaceScope personalOnly><SettingsScreen /></WorkspaceScope> : <WorkspaceSettings />;
 }

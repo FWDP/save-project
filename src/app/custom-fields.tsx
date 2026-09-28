@@ -1,3 +1,4 @@
+import { WorkspaceScope } from '@/components/workspace-scope';
 import { getAuthUser } from '@/lib/auth';
 import { useEffect, useState } from 'react';
 import {
@@ -51,7 +52,7 @@ async function saveFields(fields: string[]) {
   }
 }
 
-export default function CustomFieldsScreen() {
+function CustomFieldsScreen() {
   const [fields, setFields] = useState<string[]>([]);
   const [name, setName] = useState('');
 
@@ -154,3 +155,5 @@ const localStyles = StyleSheet.create({
     fontWeight: '700',
   },
 });
+
+export default function ScopedPage() { return <WorkspaceScope personalOnly><CustomFieldsScreen /></WorkspaceScope>; }

@@ -1,6 +1,8 @@
+import { WorkspaceScope } from '@/components/workspace-scope';
+import { useWorkspaceFinance } from '@/components/providers/workspace-finance-provider';
 import { useRefreshFinance } from '@/components/providers/finance-data-provider';
 import { localDate, validDate } from '@/lib/finance';
-import { useRouter } from 'expo-router';
+import { useRouter, Redirect } from 'expo-router';
 import { useState } from 'react';
 import {
   Pressable,
@@ -16,7 +18,7 @@ import { saveTransactionDraft } from '@/lib/transaction-writes';
 import { useExpenseDraftStore } from '@/store/expense-draft-store';
 import { useFinanceStore } from '@/store/finance-store';
 
-export default function ReceiptScreen() {
+function ReceiptScreen() {
   const router = useRouter();
   const refresh = useRefreshFinance();
   const { setTransactions, categories } = useFinanceStore();
@@ -305,3 +307,8 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
 });
+
+export default function ScopedEntry() {
+  const { personal } = useWorkspaceFinance();
+  return <WorkspaceScope write>{personal ? <ReceiptScreen /> : <Redirect href={{ pathname: '/workspaces', params: { add: '1' } }} />}</WorkspaceScope>;
+}

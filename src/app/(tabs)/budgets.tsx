@@ -1,3 +1,4 @@
+import { WorkspaceScope } from '@/components/workspace-scope';
 import { useState } from 'react';
 import { Alert, Pressable, Text, TextInput, View } from 'react-native';
 import {
@@ -9,11 +10,12 @@ import { createBudget, updateBudget, deleteBudget } from '@/lib/api';
 import { budgetProgress, budgetSpent } from '@/lib/finance';
 import { getAuthUser } from '@/lib/auth';
 import { useFinanceStore } from '@/store/finance-store';
-const money = (n: number) =>
-  `₱${n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-export default function BudgetsScreen() {
-  const { budgets, setBudgets, transactions, categories, selectedMonth } =
-    useFinanceStore();
+import { useWorkspaceFinance } from '@/components/providers/workspace-finance-provider';
+const money = (n: number, currency: string) =>
+  new Intl.NumberFormat('en-PH', { style: 'currency', currency }).format(n);
+function BudgetsScreen() {
+  const { budgets, transactions, categories, selectedMonth, isLoading, currency } = useWorkspaceFinance();
+  const setBudgets = useFinanceStore(state => state.setBudgets);
   const [editing, setEditing] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
   const [category, setCategory] = useState('');
@@ -75,12 +77,28 @@ export default function BudgetsScreen() {
       return { budget, spent, ...budgetProgress(spent, budget.limit) };
     })
     .sort((a, b) => b.percent - a.percent);
+  const hasTransactions = transactions.some(
+    (transaction) => transaction.date.startsWith(`${selectedMonth}-`),
+  );
   return (
     <FinancePage
       title="Budgets"
-      subtitle="Monthly category limits and remaining amounts"
+      subtitle={isLoading ? 'Syncing current transactions…' : 'Monthly category limits and remaining amounts'}
     >
       <MonthPicker />
+      {rows.length ? (
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Current month</Text>
+          <Text style={styles.rowMeta}>
+            {money(rows.reduce((sum, row) => sum + row.spent, 0), currency)} spent across {rows.length} budgeted categor{rows.length === 1 ? 'y' : 'ies'} of {money(rows.reduce((sum, row) => sum + row.budget.limit, 0), currency)}
+          </Text>
+        </View>
+      ) : null}
+      {!isLoading && hasTransactions && rows.every((row) => row.spent === 0) ? (
+        <Text style={{ color: '#e9bd69', lineHeight: 22 }}>
+          Transactions exist for this month, but none match the budget category names. Edit a budget category to match the transaction category.
+        </Text>
+      ) : null}
       <Pressable
         style={styles.primaryButton}
         onPress={() => {
@@ -169,7 +187,7 @@ export default function BudgetsScreen() {
             </Text>
           </View>
           <Text style={styles.rowMeta}>
-            {money(spent)} of {money(budget.limit)}
+            {money(spent, currency)} of {money(budget.limit, currency)}
           </Text>
           <View
             style={{
@@ -194,7 +212,7 @@ export default function BudgetsScreen() {
               fontSize: 15,
             }}
           >
-            {money(Math.abs(remaining))}{' '}
+            {money(Math.abs(remaining), currency)}{' '}
             {remaining < 0 ? 'over budget' : 'remaining'}
           </Text>
           <View style={{ flexDirection: 'row', gap: 24 }}>
@@ -259,3 +277,5 @@ export default function BudgetsScreen() {
     </FinancePage>
   );
 }
+
+export default function ScopedPage() { return <WorkspaceScope personalOnly><BudgetsScreen /></WorkspaceScope>; }

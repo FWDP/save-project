@@ -1,3 +1,4 @@
+import { WorkspaceScope } from '@/components/workspace-scope';
 import { useMemo, useState } from 'react';
 import {
   Alert,
@@ -29,7 +30,7 @@ const COLORS = [
   '#64748b',
 ];
 
-export default function CategoriesScreen() {
+function CategoriesScreen() {
   const { categories, setCategories } = useFinanceStore();
   const [search, setSearch] = useState('');
   const [editing, setEditing] = useState<ApiCategory | null>(null);
@@ -62,12 +63,16 @@ export default function CategoriesScreen() {
       return;
     }
     try {
-      const saved = editing
+      const saved = editing && !editing.builtIn
         ? await updateCategory(editing.id, { name: name.trim(), type, color })
+        : editing
+          ? await createCategory({ name: name.trim(), type, color, replacesBuiltInId: editing.id })
         : await createCategory({ name: name.trim(), type, color });
-      const next = editing
+      const next = editing && !editing.builtIn
         ? categories.map((item) => (item.id === saved.id ? saved : item))
-        : [...categories, saved];
+        : editing
+          ? categories.map((item) => (item.id === editing.id ? { ...saved, replacesBuiltInId: editing.id } : item))
+          : [...categories, saved];
       setCategories(next);
       setOpen(false);
     } catch {
@@ -139,13 +144,13 @@ export default function CategoriesScreen() {
                   : 'Income category'}
               </Text>
             </View>
-            {!item.builtIn && <Pressable
+            <Pressable
               accessibilityLabel={`Edit ${item.name}`}
               style={styles.action}
               onPress={() => launch(item)}
             >
               <Text style={styles.edit}>✎</Text>
-            </Pressable>}
+            </Pressable>
             {!item.builtIn && <Pressable
               accessibilityLabel={`Delete ${item.name}`}
               style={styles.action}
@@ -355,3 +360,5 @@ const styles = StyleSheet.create({
   },
   saveText: { color: '#07111f', fontWeight: '800' },
 });
+
+export default function ScopedPage() { return <WorkspaceScope personalOnly><CategoriesScreen /></WorkspaceScope>; }

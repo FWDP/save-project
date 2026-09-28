@@ -16,6 +16,9 @@ export class Category {
 
   @Prop({ default: '#6366F1' })
   color: string;
+
+  @Prop({ index: true })
+  replacesBuiltInId?: string;
 }
 
 export const CategorySchema = SchemaFactory.createForClass(Category);

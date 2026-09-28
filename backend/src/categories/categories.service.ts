@@ -19,6 +19,7 @@ export type CategoryResponse = {
   parentCategory?: string;
   subcategory?: string;
   builtIn?: boolean;
+  replacesBuiltInId?: string;
 };
 
 function toCategoryResponse(doc: any): CategoryResponse {
@@ -27,6 +28,8 @@ function toCategoryResponse(doc: any): CategoryResponse {
     name: doc.name,
     type: doc.type,
     color: doc.color,
+    builtIn: doc.builtIn,
+    replacesBuiltInId: doc.replacesBuiltInId,
   };
 }
 
@@ -51,8 +54,9 @@ export class CategoriesService {
         this.model.find({ userId }).sort({ createdAt: -1 }).lean(),
       )
     ).map(toCategoryResponse);
+    const replaced = new Set(custom.map((category: any) => category.replacesBuiltInId).filter(Boolean));
     const names = new Set(custom.map((category) => `${category.type}:${category.name.toLowerCase()}`));
-    return [...BUILTIN_CATEGORIES.filter((category) => !names.has(`${category.type}:${category.name.toLowerCase()}`)), ...custom];
+    return [...BUILTIN_CATEGORIES.filter((category) => !replaced.has(category.id) && !names.has(`${category.type}:${category.name.toLowerCase()}`)), ...custom];
   }
   async findOne(id: string): Promise<CategoryResponse> {
     const userId = currentOwner();
@@ -67,7 +71,7 @@ export class CategoriesService {
   }
   async create(dto: CreateCategoryDto): Promise<CategoryResponse> {
     const userId = currentOwner();
-    const row = await this.db(() => new this.model({ ...dto, userId }).save());
+    const row = await this.db(() => new this.model({ ...dto, userId, builtIn: false }).save());
     return toCategoryResponse(row.toObject());
   }
   async update(id: string, dto: UpdateCategoryDto): Promise<CategoryResponse> {

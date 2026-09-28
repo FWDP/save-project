@@ -3,6 +3,8 @@ import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 
 export type ApiTransaction = {
+  workspaceId?: string;
+  revision?: number;
   clientMutationId?: string;
   syncState?: 'pending';
   id: string;
@@ -37,6 +39,7 @@ export type ApiCategory = {
   parentCategory?: string;
   subcategory?: string;
   builtIn?: boolean;
+  replacesBuiltInId?: string;
 };
 
 export type ApiSavingsGoalStatus =
@@ -292,10 +295,7 @@ async function mutateJson<T>(
     },
     body: payload ? JSON.stringify(payload) : undefined,
   });
-  if (!response.ok)
-    throw new Error(
-      `SAVE API request failed: ${url} (HTTP ${response.status})`,
-    );
+  if (!response.ok) throw await apiError(response, path);
   return response.json() as Promise<T>;
 }
 
@@ -360,6 +360,66 @@ async function getJson<T>(path: string): Promise<T> {
   });
   if (!response.ok) throw await apiError(response, path);
   return response.json() as Promise<T>;
+}
+
+export type ApiWorkspace = {
+  id: string;
+  name: string;
+  kind: 'personal' | 'business';
+  currency: string;
+  timezone: string;
+  role: 'owner' | 'admin' | 'finance' | 'member' | 'viewer';
+  memberCount: number;
+};
+export type WorkspaceTransactionInput = {
+  clientMutationId: string;
+  type: 'expense' | 'income';
+  amountMinor: number;
+  description: string;
+  category: string;
+  merchant: string;
+  date: string;
+};
+export type ApiWorkspaceTransaction = WorkspaceTransactionInput & {
+  id: string;
+  workspaceId: string;
+  createdBy: string;
+  revision: number;
+};
+export type WorkspaceTransactionPage = {
+  items: ApiWorkspaceTransaction[];
+  page: number;
+  pageSize: number;
+  total: number;
+  summary: { incomeMinor: number; expenseMinor: number; balanceMinor: number };
+};
+const workspacePath = (id: string) => `/workspaces/${encodeURIComponent(id)}`;
+export const fetchWorkspaces = () => getJson<ApiWorkspace[]>('/workspaces');
+export const createWorkspace = (payload: {
+  name: string; kind: 'personal' | 'business'; currency: string; clientMutationId: string;
+}) => postJson<ApiWorkspace>('/workspaces', payload);
+export function fetchWorkspaceTransactions(id: string, page = 1, month?: string) {
+  const query = new URLSearchParams({ page: String(page) });
+  if (month) query.set('month', month);
+  return getJson<WorkspaceTransactionPage>(`${workspacePath(id)}/transactions?${query}`);
+}
+export function saveWorkspaceTransaction(
+  workspaceId: string,
+  payload: WorkspaceTransactionInput,
+  existing?: { id: string; revision: number },
+) {
+  const path = `${workspacePath(workspaceId)}/transactions`;
+  return existing
+    ? mutateJson<ApiWorkspaceTransaction>(`${path}/${encodeURIComponent(existing.id)}`, 'PATCH', {
+        ...payload, revision: existing.revision,
+      })
+    : postJson<ApiWorkspaceTransaction>(path, payload);
+}
+export function deleteWorkspaceTransaction(workspaceId: string, transaction: { id: string; revision: number }) {
+  return mutateJson<{ deleted: boolean }>(
+    `${workspacePath(workspaceId)}/transactions/${encodeURIComponent(transaction.id)}`,
+    'DELETE', { revision: transaction.revision },
+  );
 }
 
 export function fetchStellarNetwork() {

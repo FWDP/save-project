@@ -8,6 +8,7 @@ type AppSidebarProps = {
 
 const menuItems: { label: string; href: Href; icon: string }[] = [
   { label: 'Dashboard', href: '/', icon: '⌘' },
+  { label: 'Workspaces', href: '/workspaces', icon: '▦' },
   { label: 'Expenses', href: '/expenses', icon: '▧' },
   { label: 'Budgets', href: '/budgets', icon: '◔' },
   { label: 'Savings', href: '/savings', icon: '◈' },
