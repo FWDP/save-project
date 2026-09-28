@@ -74,6 +74,12 @@ export default async function WorkspaceLayout({
           </div>
         </header>
         <main id="main-content" className="content">
+          {workspace.kind === "personal" && workspace.currency !== "PHP" && (
+            <p className="notice" role="status">
+              This personal workspace uses {workspace.currency}, so it remains
+              separate from SAVE Mobile records, which are recorded in PHP.
+            </p>
+          )}
           {children}
         </main>
         <footer className="app-footer">

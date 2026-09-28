@@ -1,5 +1,6 @@
 import { currentOwner } from '../auth/auth-context';
 import {
+  ConflictException,
   Injectable,
   NotFoundException,
   ServiceUnavailableException,
@@ -38,7 +39,11 @@ export class BudgetsService {
   private async db<T>(operation: () => PromiseLike<T>): Promise<T> {
     try {
       return await operation();
-    } catch {
+    } catch (error) {
+      if ((error as { code?: number }).code === 11000)
+        throw new ConflictException(
+          'A budget for this category already exists.',
+        );
       throw new ServiceUnavailableException(
         'Database unavailable. Please retry.',
       );

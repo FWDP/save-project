@@ -1,6 +1,7 @@
 import { ExchangeRatesService } from "./exchange-rates.service";
 import { Module } from "@nestjs/common";
 import { MongooseModule } from "@nestjs/mongoose";
+import { TransactionsModule } from "../transactions/transactions.module";
 import {
   Workspace,
   WorkspaceSchema,
@@ -11,6 +12,7 @@ import { WorkspacesController } from "./workspaces.controller";
 import { WorkspacesService } from "./workspaces.service";
 @Module({
   imports: [
+    TransactionsModule,
     MongooseModule.forFeature([
       { name: Workspace.name, schema: WorkspaceSchema },
       { name: WorkspaceTransaction.name, schema: WorkspaceTransactionSchema },

@@ -10,15 +10,16 @@ The dedicated `web/` app now uses Next.js 16.3.6 and React 19.2.8. See [local se
 - Personal/business workspace creation and switching, with backend active-membership checks and owner/admin/finance/member/viewer permissions.
 - Integer-minor-unit transactions with create/read/edit/delete, mutation IDs, revision conflicts, date validation, URL filters and 25-record pagination.
 - Responsive overview, transaction screens, category reports and summary CSV export. Totals cover all matching records, not only the current page.
+- Personal PHP categories, monthly budgets and savings trackers, backed by the same authenticated owner-scoped APIs as SAVE Mobile.
 - Permission-policy/service tests and amount/filter tests. Browser qualification uses isolated local auth/API fixtures; live provider and database integration remain release gates.
 
-This slice uses embedded memberships, category labels and page-number pagination. Invitations, category entities, cursor pagination, shared domain packaging, approvals, audit history, budgets, savings and receipt uploads remain future work. Business users can currently track records; team administration is not exposed.
+This slice uses embedded memberships, category labels and page-number pagination. Invitations, category entities, cursor pagination, shared domain packaging, approvals, audit history and receipt uploads remain future work. Business users can currently track records; team administration is not exposed.
 
-**Migration boundary:** new Web records use `workspace_transactions`. Existing mobile user-scoped records remain intact and are not yet shared with Web. A tested migration and mobile workspace integration must precede a shared-data release. No external provider configuration or deployment was performed.
+**Cross-client data boundary:** personal PHP transactions use the same owner-scoped records as Mobile. Existing personal Web workspace transactions are copied idempotently on first personal-workspace access, preserving IDs and mutation IDs; source records remain in `workspace_transactions` with a migration marker. Categories, budgets and savings goals use the existing owner-scoped collections shared with Mobile. Business transactions remain workspace-scoped and are not exposed to Mobile. New personal workspaces are PHP-only; existing non-PHP personal workspaces remain Web-only until an explicit currency migration is designed. No external provider configuration or deployment was performed.
 
 ## Currency support implemented
 
-New Web personal/business workspaces can select from 23 currencies, including TWD (NTD), CNY and KRW. Workspace currency is immutable; existing records retain PHP. Entry, editing, summaries and CSV use currency-specific precision. Reports now offer current-rate conversion through CurrencyAPI, with provider timestamps, 60-second refresh, five-minute freshness enforcement and converted CSV metadata. Activation requires a configured minute-level API subscription. Saved records remain in their original workspace currency; historical-rate booking remains future work. See the supported list in `web/README.md`. Native mobile remains PHP until its separate data model is migrated.
+Business workspaces can select from 23 currencies, including TWD (NTD), CNY and KRW. Personal workspace currency is PHP to match Mobile. Workspace currency is immutable; existing records retain their original currency. Entry, editing, summaries and CSV use currency-specific precision. Reports offer current-rate conversion through CurrencyAPI, with provider timestamps, 60-second refresh, five-minute freshness enforcement and converted CSV metadata. Activation requires a configured minute-level API subscription. Saved records remain in their original workspace currency; historical-rate booking remains future work. See the supported list in `web/README.md`.
 
 ## Product and architecture decision
 
@@ -57,7 +58,7 @@ A person has one identity and can belong to multiple workspaces. Personal/Busine
 | Approval | transaction ID, requester, assigned reviewer, state, reason, timestamps; server-enforced transitions |
 | Audit event | workspace ID, actor, action, affected entity, prior/new revision, timestamp; append-only |
 
-Current personal APIs are user-scoped. Migrate to workspace-scoped endpoints before introducing business access. Backfill existing owned records to their owner's personal workspace through an idempotent migration with dry-run counts, a database backup and rollback instructions. Do not auto-claim legacy demo/ownerless records.
+Personal finance endpoints are owner-scoped and require verified identity; the PHP personal workspace is checked before Web exposes those records. Business transactions and roles remain workspace-scoped. Do not auto-claim legacy demo/ownerless records or relabel amounts from non-PHP personal workspaces.
 
 ## Roles and authorization
 

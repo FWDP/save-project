@@ -8,7 +8,11 @@ import {
     Post,
 } from '@nestjs/common';
 
-import { CreateTransactionDto, UpdateTransactionDto } from './transactions.dto';
+import {
+  CreateTransactionDto,
+  DeleteTransactionDto,
+  UpdateTransactionDto,
+} from './transactions.dto';
 import { TransactionsService } from './transactions.service';
 
 @Controller('transactions')
@@ -36,7 +40,7 @@ export class TransactionsController {
   }
 
   @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.transactionsService.remove(id);
+  remove(@Param('id') id: string, @Body() dto?: DeleteTransactionDto) {
+    return this.transactionsService.remove(id, dto?.revision);
   }
 }

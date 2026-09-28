@@ -1,7 +1,8 @@
 import { DateField } from '@/components/date-field';
 import { validDate } from '@/lib/finance';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  AppState,
   Alert,
   Linking,
   Pressable,
@@ -37,40 +38,45 @@ export default function SavingsScreen() {
     asset: 'XLM',
   });
   const [message, setMessage] = useState<string | null>(null);
+  const refreshInProgress = useRef(false);
+  const isMounted = useRef(true);
 
   const loadGoals = useCallback(async () => {
+    if (refreshInProgress.current) return;
+    refreshInProgress.current = true;
     try {
       setLoading(true);
       const items = await fetchSavingsGoals();
+      if (!isMounted.current) return;
       setGoals(items);
       setMessage(null);
     } catch {
-      setMessage('Savings API unavailable.');
+      if (isMounted.current) setMessage('Savings API unavailable.');
     } finally {
-      setLoading(false);
+      if (isMounted.current) setLoading(false);
+      refreshInProgress.current = false;
     }
   }, []);
 
   useEffect(() => {
-    let active = true;
-
-    fetchSavingsGoals()
-      .then((items) => {
-        if (!active) return;
-        setGoals(items);
-        setMessage(null);
-      })
-      .catch(() => {
-        if (active) setMessage('Savings API unavailable.');
-      })
-      .finally(() => {
-        if (active) setLoading(false);
-      });
+    isMounted.current = true;
+    const initialRefresh = setTimeout(() => {
+      if (isMounted.current) void loadGoals();
+    }, 0);
+    const interval = setInterval(() => {
+      if (AppState.currentState === 'active') void loadGoals();
+    }, 30_000);
+    const listener = AppState.addEventListener('change', (state) => {
+      if (state === 'active') void loadGoals();
+    });
 
     return () => {
-      active = false;
+      isMounted.current = false;
+      clearTimeout(initialRefresh);
+      clearInterval(interval);
+      listener.remove();
     };
-  }, []);
+  }, [loadGoals]);
 
   const create = async () => {
     if (creating) return;

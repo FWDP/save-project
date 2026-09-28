@@ -10,6 +10,10 @@ import { InjectModel } from "@nestjs/mongoose";
 import { Model, Types } from "mongoose";
 import { currentOwner } from "../auth/auth-context";
 import {
+  TransactionResponse,
+  TransactionsService,
+} from "../transactions/transactions.service";
+import {
   CreateWorkspaceDto,
   EditWorkspaceTransactionDto,
   TransactionQueryDto,
@@ -35,6 +39,7 @@ export class WorkspacesService {
     private readonly workspaces: Model<WorkspaceDocument>,
     @InjectModel(WorkspaceTransaction.name)
     private readonly transactions: Model<WorkspaceTransactionDocument>,
+    private readonly personalTransactions: TransactionsService,
   ) {}
   private async db<T>(fn: () => PromiseLike<T>): Promise<T> {
     try {
@@ -98,6 +103,10 @@ export class WorkspacesService {
     const userId = currentOwner();
     if (!dto.name.trim())
       throw new BadRequestException("Enter a workspace name.");
+    if (dto.kind === "personal" && dto.currency && dto.currency !== "PHP")
+      throw new BadRequestException(
+        "Personal workspaces must use PHP to share records with SAVE Mobile.",
+      );
     const filter =
       dto.kind === "personal"
         ? { ownerId: userId, kind: "personal" }
@@ -138,8 +147,130 @@ export class WorkspacesService {
       revision: row.revision,
     };
   }
+  private personalTransaction(row: TransactionResponse, workspaceId: string) {
+    const amountMinor = Math.round(row.amount * 100);
+    if (!Number.isSafeInteger(amountMinor))
+      throw new ConflictException(
+        "A personal transaction cannot be represented in PHP minor units.",
+      );
+    return {
+      id: row.id,
+      workspaceId,
+      createdBy: row.userId,
+      clientMutationId: row.clientMutationId ?? `legacy-${row.id}`,
+      type: row.type,
+      amountMinor,
+      description: row.description,
+      category: row.category,
+      merchant: row.merchant ?? "",
+      date: row.date.slice(0, 10),
+      revision: row.revision,
+    };
+  }
+  private async migratePersonalTransactions(workspaceId: string) {
+    const userId = currentOwner();
+    const rows = await this.db(() =>
+      this.transactions
+        .find({
+          workspaceId,
+          createdBy: userId,
+          sharedWithMobile: { $ne: true },
+        })
+        .sort({ _id: 1 })
+        .lean(),
+    );
+    for (const row of rows) {
+      await this.personalTransactions.importWorkspaceTransaction({
+        id: String(row._id),
+        clientMutationId: row.clientMutationId,
+        createdBy: row.createdBy,
+        type: row.type,
+        amountMinor: row.amountMinor,
+        description: row.description,
+        category: row.category,
+        merchant: row.merchant,
+        date: row.date,
+      });
+      await this.db(() =>
+        this.transactions.updateOne(
+          { _id: row._id, workspaceId, createdBy: userId },
+          { $set: { sharedWithMobile: true } },
+        ),
+      );
+    }
+  }
+  private async listPersonalTransactions(
+    workspaceId: string,
+    query: TransactionQueryDto,
+  ) {
+    await this.migratePersonalTransactions(workspaceId);
+    const search = query.search?.trim();
+    const pattern = search ? new RegExp(escapeSearch(search), "i") : null;
+    const matching = (await this.personalTransactions.findAll())
+      .map((row) => this.personalTransaction(row, workspaceId))
+      .filter((row) => {
+        if (query.month && !row.date.startsWith(`${query.month}-`))
+          return false;
+        if (query.type && row.type !== query.type) return false;
+        if (query.category && row.category !== query.category) return false;
+        if (
+          pattern &&
+          ![row.description, row.merchant, row.category].some((value) =>
+            pattern.test(value),
+          )
+        )
+          return false;
+        return true;
+      })
+      .sort((a, b) => {
+        const dateOrder = a.date.localeCompare(b.date);
+        const idOrder = a.id.localeCompare(b.id);
+        return (query.sort === "oldest" ? 1 : -1) * (dateOrder || idOrder);
+      });
+    const page = query.page ?? 1;
+    const pageSize = 25;
+    const incomeMinor = matching.reduce(
+      (sum, row) => sum + (row.type === "income" ? row.amountMinor : 0),
+      0,
+    );
+    const expenseMinor = matching.reduce(
+      (sum, row) => sum + (row.type === "expense" ? row.amountMinor : 0),
+      0,
+    );
+    const categoryTotals = new Map<
+      string,
+      { amountMinor: number; count: number }
+    >();
+    for (const row of matching) {
+      if (row.type !== "expense") continue;
+      const total = categoryTotals.get(row.category) ?? {
+        amountMinor: 0,
+        count: 0,
+      };
+      total.amountMinor += row.amountMinor;
+      total.count += 1;
+      categoryTotals.set(row.category, total);
+    }
+    return {
+      items: matching.slice((page - 1) * pageSize, page * pageSize),
+      page,
+      pageSize,
+      total: matching.length,
+      summary: {
+        incomeMinor,
+        expenseMinor,
+        balanceMinor: incomeMinor - expenseMinor,
+      },
+      categories: [...categoryTotals]
+        .map(([name, total]) => ({ name, ...total }))
+        .sort((a, b) => b.amountMinor - a.amountMinor)
+        .slice(0, 8),
+    };
+  }
   async listTransactions(id: string, query: TransactionQueryDto) {
     const workspace = await this.get(id);
+    if (workspace.kind === "personal" && workspace.currency === "PHP")
+      return this.listPersonalTransactions(id, query);
     const filter: Record<string, unknown> = {
       ...visibleTransactions(id, currentOwner(), workspace.role),
     };
@@ -238,6 +369,13 @@ export class WorkspacesService {
   async getTransaction(id: string, transactionId: string) {
     const workspace = await this.get(id);
     if (!Types.ObjectId.isValid(transactionId)) throw new NotFoundException();
+    if (workspace.kind === "personal" && workspace.currency === "PHP") {
+      await this.migratePersonalTransactions(id);
+      return this.personalTransaction(
+        await this.personalTransactions.findOne(transactionId),
+        id,
+      );
+    }
     const row = await this.db(() =>
       this.transactions
         .findOne({
@@ -254,6 +392,20 @@ export class WorkspacesService {
     assertWrite(workspace.role);
     validateRecord(dto);
     const userId = currentOwner();
+    if (workspace.kind === "personal" && workspace.currency === "PHP") {
+      await this.migratePersonalTransactions(id);
+      const row = await this.personalTransactions.create({
+        clientMutationId: dto.clientMutationId,
+        userId,
+        type: dto.type,
+        amount: dto.amountMinor / 100,
+        description: dto.description,
+        category: dto.category,
+        merchant: dto.merchant,
+        date: dto.date,
+      });
+      return this.personalTransaction(row, id);
+    }
     const row = await this.db(() =>
       this.transactions
         .findOneAndUpdate(
@@ -287,6 +439,19 @@ export class WorkspacesService {
     validateRecord(dto);
     if (!Types.ObjectId.isValid(transactionId)) throw new NotFoundException();
     const { revision, clientMutationId: _key, ...fields } = dto;
+    if (workspace.kind === "personal" && workspace.currency === "PHP") {
+      await this.migratePersonalTransactions(id);
+      const row = await this.personalTransactions.update(transactionId, {
+        type: fields.type,
+        amount: fields.amountMinor / 100,
+        description: fields.description,
+        category: fields.category,
+        merchant: fields.merchant,
+        date: fields.date,
+        revision,
+      });
+      return this.personalTransaction(row, id);
+    }
     const row = await this.db(() =>
       this.transactions
         .findOneAndUpdate(
@@ -318,6 +483,10 @@ export class WorkspacesService {
     const workspace = await this.get(id);
     assertWrite(workspace.role);
     if (!Types.ObjectId.isValid(transactionId)) throw new NotFoundException();
+    if (workspace.kind === "personal" && workspace.currency === "PHP") {
+      await this.migratePersonalTransactions(id);
+      return this.personalTransactions.remove(transactionId, revision);
+    }
     const row = await this.db(() =>
       this.transactions
         .findOneAndDelete({

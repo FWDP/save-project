@@ -49,3 +49,47 @@ export type CategoryOption = {
   parentCategory?: string;
   subcategory?: string;
 };
+
+export type ApiCategory = CategoryOption & {
+  id: string;
+  color: string;
+  builtIn?: boolean;
+};
+
+export type ApiBudget = {
+  id: string;
+  userId: string;
+  category: string;
+  limit: number;
+  spent: number;
+  period: "monthly" | "weekly";
+};
+
+export type ApiSavingsGoal = {
+  id: string;
+  name: string;
+  targetAmount: number;
+  fundedAmount: number;
+  targetDate?: string;
+  asset: string;
+  status:
+    | "draft"
+    | "pending"
+    | "active"
+    | "completed"
+    | "withdrawn"
+    | "cancelled";
+  network?: string;
+  ownerAddress?: string;
+  contractId?: string;
+  vaultGoalId?: string;
+  transactionHash?: string;
+};
+
+export type PersonalTransaction = {
+  id: string;
+  type: "income" | "expense";
+  amount: number;
+  category: string;
+  date: string;
+};

@@ -26,6 +26,9 @@ export class Transaction {
   @Prop({ required: true })
   date: string;
 
+  @Prop({ required: true, default: 1, min: 1 })
+  revision: number;
+
   @Prop({
     required: true,
     enum: ['pending', 'approved', 'rejected'],

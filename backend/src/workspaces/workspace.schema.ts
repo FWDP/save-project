@@ -48,6 +48,7 @@ export class WorkspaceTransaction {
   @Prop({ maxlength: 120, default: "" }) merchant: string;
   @Prop({ required: true }) date: string;
   @Prop({ required: true, default: 1 }) revision: number;
+  @Prop({ default: false }) sharedWithMobile: boolean;
 }
 export type WorkspaceTransactionDocument =
   HydratedDocument<WorkspaceTransaction>;
@@ -58,3 +59,9 @@ WorkspaceTransactionSchema.index(
   { unique: true },
 );
 WorkspaceTransactionSchema.index({ workspaceId: 1, date: -1, _id: -1 });
+WorkspaceTransactionSchema.index({
+  workspaceId: 1,
+  createdBy: 1,
+  sharedWithMobile: 1,
+  _id: 1,
+});

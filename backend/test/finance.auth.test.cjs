@@ -136,3 +136,43 @@ test('retried creates use the same owner-scoped idempotent upsert', async () => 
     assert.equal(a.userId, 'alice');
   });
 });
+test('Web revision checks reject stale writes without breaking legacy updates', async () => {
+  const id = '507f1f77bcf86cd799439011';
+  const model = {
+    findOneAndUpdate: (filter, update) => {
+      assert.equal(filter._id, id);
+      assert.equal(filter.userId, 'alice');
+      assert.deepEqual(filter.$or, [{ revision: 1 }, { revision: { $exists: false } }]);
+      assert.deepEqual(update.$inc, { revision: 1 });
+      return { lean: async () => null };
+    },
+    findOne: (filter) => {
+      assert.deepEqual(filter, { _id: id, userId: 'alice' });
+      return { lean: async () => ({ _id: id, revision: 2 }) };
+    },
+  };
+  await authContext.run({ userId: 'alice' }, async () => {
+    await assert.rejects(
+      new TransactionsService(model).update(id, {
+        revision: 1,
+        amount: 25,
+      }),
+      { status: 409 },
+    );
+  });
+});
+test('web transaction creation does not require a client-supplied owner ID', async () => {
+  const { validate } = require('class-validator');
+  const { CreateTransactionDto } = require('../dist/transactions/transactions.dto');
+  const errors = await validate(
+    Object.assign(new CreateTransactionDto(), {
+      clientMutationId: 'web-create-1',
+      type: 'expense',
+      amount: 12.34,
+      category: 'Food',
+      description: 'Lunch',
+      date: '2026-09-12',
+    }),
+  );
+  assert.deepEqual(errors, []);
+});

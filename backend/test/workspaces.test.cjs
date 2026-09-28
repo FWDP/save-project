@@ -13,7 +13,7 @@ const { AuthGuard } = require("../dist/auth/auth.guard");
 const workspaceId = "507f1f77bcf86cd799439011";
 const recordId = "507f191e810c19729de860ea";
 const actor = (id, fn) => authContext.run({ userId: id }, fn);
-function workspaceModel(role = "owner") {
+function workspaceModel(role = "owner", kind = "business", currency = "PHP") {
   return {
     findOne(filter) {
       assert.equal(filter._id, workspaceId);
@@ -24,13 +24,25 @@ function workspaceModel(role = "owner") {
         lean: async () => ({
           _id: new Types.ObjectId(workspaceId),
           name: "Personal",
-          kind: "personal",
-          currency: "PHP",
+          ownerId: "alice",
+          kind,
+          currency,
           timezone: "Asia/Manila",
           members: [{ userId: "alice", status: "active", role }],
         }),
       };
     },
+  };
+}
+function personalTransactionService(overrides = {}) {
+  return {
+    findAll: async () => [],
+    findOne: async () => ({}),
+    create: async () => ({}),
+    update: async () => ({}),
+    remove: async () => ({ deleted: true }),
+    importWorkspaceTransaction: async () => {},
+    ...overrides,
   };
 }
 test("workspace endpoints cannot be accessed without a verified bearer token", async () => {
@@ -58,7 +70,13 @@ test("role matrix restricts writes and member visibility", () => {
 test("workspace access checks active membership, not caller-supplied ownership", async () => {
   await actor("alice", async () =>
     assert.equal(
-      (await new WorkspacesService(workspaceModel(), {}).get(workspaceId)).role,
+      (
+        await new WorkspacesService(
+          workspaceModel(),
+          {},
+          personalTransactionService(),
+        ).get(workspaceId)
+      ).role,
       "owner",
     ),
   );
@@ -74,6 +92,7 @@ test("workspace access checks active membership, not caller-supplied ownership",
           },
         },
         {},
+        personalTransactionService(),
       ).get(workspaceId),
       { status: 404 },
     ),
@@ -97,7 +116,7 @@ test("personal workspace creation is an idempotent owner-scoped upsert with fixe
     },
   };
   await actor("alice", () =>
-    new WorkspacesService(model, {}).create({
+    new WorkspacesService(model, {}, personalTransactionService()).create({
       name: "My finances",
       kind: "personal",
       ownerId: "bob",
@@ -119,7 +138,11 @@ test("known transaction ID cannot cross workspace or creator visibility boundary
   };
   await actor("alice", () =>
     assert.rejects(
-      new WorkspacesService(workspaceModel("member"), model).getTransaction(
+      new WorkspacesService(
+        workspaceModel("member"),
+        model,
+        personalTransactionService(),
+      ).getTransaction(
         workspaceId,
         recordId,
       ),
@@ -130,7 +153,11 @@ test("known transaction ID cannot cross workspace or creator visibility boundary
 test("viewer cannot create a record even with a valid workspace ID", async () => {
   await actor("alice", () =>
     assert.rejects(
-      new WorkspacesService(workspaceModel("viewer"), {}).createTransaction(
+      new WorkspacesService(
+        workspaceModel("viewer"),
+        {},
+        personalTransactionService(),
+      ).createTransaction(
         workspaceId,
         {},
       ),
@@ -154,7 +181,11 @@ test("concurrent edits and deletes include expected revision and reject stale ve
     },
   };
   await actor("alice", async () => {
-    const service = new WorkspacesService(workspaceModel("member"), model);
+    const service = new WorkspacesService(
+      workspaceModel("member"),
+      model,
+      personalTransactionService(),
+    );
     await assert.rejects(
       service.editTransaction(workspaceId, recordId, {
         revision: 3,
@@ -199,6 +230,7 @@ test("aggregate summary and pagination use the same workspace and filter", async
     const data = await new WorkspacesService(
       workspaceModel("member"),
       model,
+      personalTransactionService(),
     ).listTransactions(workspaceId, {
       month: "2026-09",
       page: 2,
@@ -209,6 +241,133 @@ test("aggregate summary and pagination use the same workspace and filter", async
     assert.equal(expected.workspaceId, workspaceId);
     assert.equal(expected.createdBy, "alice");
     assert.equal(expected.$or[0].description.$regex, "coffee\\.\\*");
+  });
+});
+test("personal PHP workspaces migrate old Web records and report the shared Mobile dataset", async () => {
+  const migrated = [];
+  let marked = false;
+  const oldWebRecord = {
+    _id: new Types.ObjectId(recordId),
+    clientMutationId: "web-record-1",
+    createdBy: "alice",
+    type: "expense",
+    amountMinor: 1250,
+    description: "Coffee shop",
+    category: "Food",
+    merchant: "Cafe",
+    date: "2026-09-12",
+  };
+  const workspaceTransactions = {
+    find(filter) {
+      assert.deepEqual(filter, {
+        workspaceId,
+        createdBy: "alice",
+        sharedWithMobile: { $ne: true },
+      });
+      return {
+        sort: () => ({ lean: async () => [oldWebRecord] }),
+      };
+    },
+    updateOne(filter, update) {
+      assert.equal(String(filter._id), recordId);
+      assert.equal(update.$set.sharedWithMobile, true);
+      marked = true;
+      return Promise.resolve({});
+    },
+  };
+  const personal = personalTransactionService({
+    importWorkspaceTransaction: async (record) => migrated.push(record),
+    findAll: async () => [
+      {
+        id: recordId,
+        userId: "alice",
+        clientMutationId: "web-record-1",
+        type: "expense",
+        amount: 12.5,
+        description: "Coffee shop",
+        category: "Food",
+        merchant: "Cafe",
+        date: "2026-09-12",
+        revision: 1,
+      },
+      {
+        id: "507f1f77bcf86cd799439012",
+        userId: "alice",
+        type: "income",
+        amount: 50,
+        description: "Pay",
+        category: "Income",
+        date: "2026-09-11",
+        revision: 2,
+      },
+      {
+        id: "507f1f77bcf86cd799439013",
+        userId: "alice",
+        type: "expense",
+        amount: 80,
+        description: "Other month",
+        category: "Food",
+        date: "2026-08-12",
+        revision: 1,
+      },
+    ],
+  });
+  await actor("alice", async () => {
+    const data = await new WorkspacesService(
+      workspaceModel("owner", "personal"),
+      workspaceTransactions,
+      personal,
+    ).listTransactions(workspaceId, {
+      month: "2026-09",
+      search: "coffee",
+    });
+    assert.equal(migrated.length, 1);
+    assert.equal(migrated[0].id, recordId);
+    assert.equal(migrated[0].amountMinor, 1250);
+    assert.equal(marked, true);
+    assert.equal(data.total, 1);
+    assert.equal(data.summary.expenseMinor, 1250);
+    assert.equal(data.items[0].workspaceId, workspaceId);
+    assert.equal(data.items[0].revision, 1);
+    assert.deepEqual(data.categories, [
+      { name: "Food", amountMinor: 1250, count: 1 },
+    ]);
+  });
+});
+test("personal Web writes use the same PHP records as Mobile", async () => {
+  let created;
+  const workspaceTransactions = {
+    find: () => ({ sort: () => ({ lean: async () => [] }) }),
+  };
+  const personal = personalTransactionService({
+    create: async (record) => {
+      created = record;
+      return {
+        id: recordId,
+        userId: "alice",
+        ...record,
+        revision: 1,
+      };
+    },
+  });
+  await actor("alice", async () => {
+    const transaction = await new WorkspacesService(
+      workspaceModel("owner", "personal"),
+      workspaceTransactions,
+      personal,
+    ).createTransaction(workspaceId, {
+      clientMutationId: "web-create-1",
+      type: "expense",
+      amountMinor: 1234,
+      description: "Lunch",
+      category: "Food",
+      merchant: "Cafe",
+      date: "2026-09-12",
+    });
+    assert.equal(created.amount, 12.34);
+    assert.equal(created.userId, "alice");
+    assert.equal(transaction.id, recordId);
+    assert.equal(transaction.amountMinor, 1234);
   });
 });
 test("invalid calendar dates and empty labels cannot be persisted", () => {
@@ -239,6 +398,19 @@ test("invalid calendar dates and empty labels cannot be persisted", () => {
   );
   assert.equal(escapeSearch("$100 (cash)"), "\\$100 \\(cash\\)");
 });
+test("new personal workspaces reject currencies Mobile cannot represent", async () => {
+  await actor("alice", async () =>
+    assert.rejects(
+      new WorkspacesService({}, {}, personalTransactionService()).create({
+        name: "Personal",
+        kind: "personal",
+        currency: "USD",
+        clientMutationId: "personal-usd",
+      }),
+      { status: 400 },
+    ),
+  );
+});
 test("workspace currency defaults to PHP and supports TWD, CNY and KRW at creation", async () => {
   for (const currency of [undefined, "TWD", "CNY", "KRW"]) {
     const model = {
@@ -253,7 +425,7 @@ test("workspace currency defaults to PHP and supports TWD, CNY and KRW at creati
       },
     };
     await actor("alice", () =>
-      new WorkspacesService(model, {}).create({
+      new WorkspacesService(model, {}, personalTransactionService()).create({
         name: "Currency test",
         kind: "business",
         clientMutationId: "currency-test",

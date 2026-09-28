@@ -3,6 +3,11 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import type { Workspace } from "@/lib/types";
 import { Icon } from "./icon";
+type NavigationLink = {
+  path: string;
+  label: string;
+  icon: Parameters<typeof Icon>[0]["name"];
+};
 export function Navigation({
   workspace,
   workspaces,
@@ -12,12 +17,19 @@ export function Navigation({
 }) {
   const pathname = usePathname();
   const router = useRouter();
-  const links = [
+  const links: NavigationLink[] = [
     { path: "overview", label: "Overview", icon: "overview" },
     { path: "transactions", label: "Transactions", icon: "transactions" },
+    ...(workspace.kind === "personal" && workspace.currency === "PHP"
+      ? [
+          { path: "budgets", label: "Budgets", icon: "reports" },
+          { path: "categories", label: "Categories", icon: "transactions" },
+          { path: "savings", label: "Savings goals", icon: "wallet" },
+        ]
+      : []),
     { path: "reports", label: "Reports", icon: "reports" },
     { path: "settings", label: "Workspace", icon: "workspace" },
-  ] as const;
+  ];
   return (
     <>
       <label className="workspace-switch">
