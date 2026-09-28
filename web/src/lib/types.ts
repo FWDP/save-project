@@ -42,3 +42,10 @@ export type ConvertedReport = {
   summary: TransactionPage["summary"];
   categories: TransactionPage["categories"];
 };
+
+export type CategoryOption = {
+  name: string;
+  type: "income" | "expense";
+  parentCategory?: string;
+  subcategory?: string;
+};

@@ -34,6 +34,9 @@ export type ApiCategory = {
   name: string;
   type: 'expense' | 'income';
   color: string;
+  parentCategory?: string;
+  subcategory?: string;
+  builtIn?: boolean;
 };
 
 export type ApiSavingsGoalStatus =

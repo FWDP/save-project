@@ -4,7 +4,7 @@ import {
   TransactionForm,
   DeleteTransaction,
 } from "@/components/transaction-form";
-import type { Workspace, Transaction } from "@/lib/types";
+import type { Workspace, Transaction, CategoryOption } from "@/lib/types";
 export default async function TransactionDetail({
   params,
 }: {
@@ -17,6 +17,7 @@ export default async function TransactionDetail({
       `/workspaces/${encodeURIComponent(id)}/transactions/${encodeURIComponent(transactionId)}`,
     ),
   ]);
+  const categories = await api<CategoryOption[]>("/categories");
   return (
     <>
       <Link href={`/w/${id}/transactions`} className="back-link">
@@ -32,6 +33,7 @@ export default async function TransactionDetail({
       </div>
       <div className="panel form-panel">
         <TransactionForm
+          categories={categories}
           currency={workspace.currency}
           workspaceId={id}
           mutationId={item.clientMutationId}

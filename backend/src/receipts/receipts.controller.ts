@@ -45,15 +45,7 @@ export class ReceiptsController {
   ): Promise<ParsedReceiptResult> {
     let base64 = body?.imageBase64;
     let mimeType = body?.mimeType || 'image/jpeg';
-    let categories = body?.categories || [];
-
-    // If categories was sent as a comma-separated string in multipart form-data
-    if (typeof categories === 'string') {
-      categories = (categories as string)
-        .split(',')
-        .map((c) => c.trim())
-        .filter(Boolean);
-    }
+    const categories = body?.categories || [];
 
     if (file && file.buffer) {
       base64 = file.buffer.toString('base64');

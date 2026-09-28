@@ -1,8 +1,8 @@
 "use client";
-import { useRef, useActionState } from "react";
+import { useRef, useActionState, useState } from "react";
 import Link from "next/link";
 import { saveTransaction, removeTransaction } from "@/app/workspaces/actions";
-import type { Transaction } from "@/lib/types";
+import type { Transaction, CategoryOption } from "@/lib/types";
 import { currencyDigits, minorToDecimal } from "@/lib/currency";
 import { Icon } from "./icon";
 import { ReceiptScanner } from "./receipt-scanner";
@@ -11,6 +11,7 @@ export function TransactionForm({
   workspaceId,
   mutationId,
   currency,
+  categories,
   date,
   item,
   readOnly = false,
@@ -18,10 +19,12 @@ export function TransactionForm({
   workspaceId: string;
   mutationId: string;
   currency: string;
+  categories: CategoryOption[];
   date: string;
   item?: Transaction;
   readOnly?: boolean;
 }) {
+  const [type, setType] = useState(item?.type ?? "expense");
   const formRef = useRef<HTMLFormElement>(null);
   const [state, action, pending] = useActionState(saveTransaction, {});
 
@@ -43,10 +46,10 @@ export function TransactionForm({
             <span className="form-step ai-step">✦</span>
             <div>
               <h2>AI Receipt Scan <span className="optional">optional</span></h2>
-              <p>Photograph or upload a receipt — Gemini Flash will pre-fill the form below.</p>
+              <p>Photograph or upload a receipt — Gemini Live will pre-fill the form below.</p>
             </div>
           </div>
-          <ReceiptScanner formRef={formRef} currency={currency} />
+          <ReceiptScanner formRef={formRef} currency={currency} categories={categories} />
           <div className="scanner-divider" aria-hidden="true" />
         </>
       )}
@@ -64,7 +67,7 @@ export function TransactionForm({
         <div className="form-grid">
           <label>
             Transaction type
-            <select name="type" defaultValue={item?.type ?? "expense"}>
+            <select name="type" value={type} onChange={(event) => setType(event.target.value as "income" | "expense")}>
               <option value="expense">Expense</option>
               <option value="income">Income</option>
             </select>
@@ -118,22 +121,10 @@ export function TransactionForm({
               maxLength={80}
               list="categories"
               defaultValue={item?.category}
-              placeholder="Choose or enter a category"
+              placeholder="Category / Subcategory"
             />
             <datalist id="categories">
-              {[
-                "Food & dining",
-                "Groceries",
-                "Transport",
-                "Shopping",
-                "Utilities",
-                "Health",
-                "Salary",
-                "Freelance",
-                "Business expenses",
-                "Sales",
-                "Other",
-              ].map((name) => (
+              {categories.filter((category) => category.type === type).map(({ name }) => (
                 <option key={name} value={name} />
               ))}
             </datalist>

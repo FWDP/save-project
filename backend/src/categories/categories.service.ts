@@ -9,12 +9,16 @@ import { Model, Types } from 'mongoose';
 
 import { CreateCategoryDto, UpdateCategoryDto } from './categories.dto';
 import { Category, CategoryDocument } from './category.schema';
+import { BUILTIN_CATEGORIES } from './category-catalog';
 
 export type CategoryResponse = {
   id: string;
   name: string;
   type: 'expense' | 'income';
   color: string;
+  parentCategory?: string;
+  subcategory?: string;
+  builtIn?: boolean;
 };
 
 function toCategoryResponse(doc: any): CategoryResponse {
@@ -42,14 +46,18 @@ export class CategoriesService {
   }
   async findAll(): Promise<CategoryResponse[]> {
     const userId = currentOwner();
-    return (
+    const custom = (
       await this.db(() =>
         this.model.find({ userId }).sort({ createdAt: -1 }).lean(),
       )
     ).map(toCategoryResponse);
+    const names = new Set(custom.map((category) => `${category.type}:${category.name.toLowerCase()}`));
+    return [...BUILTIN_CATEGORIES.filter((category) => !names.has(`${category.type}:${category.name.toLowerCase()}`)), ...custom];
   }
   async findOne(id: string): Promise<CategoryResponse> {
     const userId = currentOwner();
+    const builtIn = BUILTIN_CATEGORIES.find((category) => category.id === id);
+    if (builtIn) return builtIn;
     if (!Types.ObjectId.isValid(id)) throw new NotFoundException();
     const row = await this.db(() =>
       this.model.findOne({ _id: id, userId }).lean(),

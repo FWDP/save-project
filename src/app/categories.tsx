@@ -139,20 +139,20 @@ export default function CategoriesScreen() {
                   : 'Income category'}
               </Text>
             </View>
-            <Pressable
+            {!item.builtIn && <Pressable
               accessibilityLabel={`Edit ${item.name}`}
               style={styles.action}
               onPress={() => launch(item)}
             >
               <Text style={styles.edit}>✎</Text>
-            </Pressable>
-            <Pressable
+            </Pressable>}
+            {!item.builtIn && <Pressable
               accessibilityLabel={`Delete ${item.name}`}
               style={styles.action}
               onPress={() => remove(item)}
             >
               <Text style={styles.delete}>×</Text>
-            </Pressable>
+            </Pressable>}
           </View>
         ))}
         {!filtered.length ? (

@@ -3,7 +3,7 @@ import Link from "next/link";
 import { api } from "@/lib/api";
 import { today } from "@/lib/format";
 import { TransactionForm } from "@/components/transaction-form";
-import type { Workspace } from "@/lib/types";
+import type { Workspace, CategoryOption } from "@/lib/types";
 export default async function NewTransaction({
   params,
 }: {
@@ -13,6 +13,7 @@ export default async function NewTransaction({
   const workspace = await api<Workspace>(
     `/workspaces/${encodeURIComponent(id)}`,
   );
+  const categories = await api<CategoryOption[]>("/categories");
   return (
     <>
       <Link className="back-link" href={`/w/${id}/transactions`}>
@@ -33,6 +34,7 @@ export default async function NewTransaction({
       ) : (
         <div className="panel form-panel">
           <TransactionForm
+            categories={categories}
             currency={workspace.currency}
             workspaceId={id}
             mutationId={randomUUID()}

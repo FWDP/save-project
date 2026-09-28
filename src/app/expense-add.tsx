@@ -331,7 +331,7 @@ export default function AddExpenseScreen() {
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 10 }}>
             <ActivityIndicator size="small" color="#75b6ff" />
             <Text style={{ color: '#75b6ff', fontSize: 12 }}>
-              Analyzing receipt with Gemini Flash…
+              Analyzing receipt with Gemini Live…
             </Text>
           </View>
         ) : null}

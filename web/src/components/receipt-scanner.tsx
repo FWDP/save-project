@@ -2,31 +2,17 @@
 import { useRef, useState, useTransition } from "react";
 import { scanReceipt } from "@/app/receipts/actions";
 
-const ACCEPT = "image/jpeg,image/png,image/webp,image/heic,application/pdf";
-
-/** Categories shown in the main TransactionForm datalist */
-const CATEGORIES = [
-  "Food & dining",
-  "Groceries",
-  "Transport",
-  "Shopping",
-  "Utilities",
-  "Health",
-  "Salary",
-  "Freelance",
-  "Business expenses",
-  "Sales",
-  "Other",
-];
+const ACCEPT = "image/jpeg,image/png,image/webp";
 
 type Props = {
   /** ref to the <form> that contains the transaction fields we will auto-fill */
   formRef: React.RefObject<HTMLFormElement | null>;
   /** ISO currency code of this workspace (e.g. "PHP") */
   currency: string;
+  categories: { name: string; type: "income" | "expense" }[];
 };
 
-export function ReceiptScanner({ formRef, currency }: Props) {
+export function ReceiptScanner({ formRef, currency, categories }: Props) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const [isPending, startTransition] = useTransition();
@@ -71,9 +57,9 @@ export function ReceiptScanner({ formRef, currency }: Props) {
 
     if (data.category) {
       // Try a case-insensitive match against known categories
-      const match = CATEGORIES.find(
-        (c) => c.toLowerCase() === data.category!.toLowerCase(),
-      );
+      const match = categories.find(
+        (c) => c.name.toLowerCase() === data.category!.toLowerCase(),
+      )?.name;
       set("category", match ?? data.category);
     }
   }
@@ -81,6 +67,10 @@ export function ReceiptScanner({ formRef, currency }: Props) {
   function handleFiles(files: FileList | null) {
     const file = files?.[0];
     if (!file) return;
+    if (!ACCEPT.split(",").includes(file.type) || file.size > 10 * 1024 * 1024) {
+      setStatus({ kind: "error", message: "Choose a JPEG, PNG, or WebP image up to 10 MB. Convert PDFs to images before scanning." });
+      return;
+    }
 
     // Show local preview for image types
     if (file.type.startsWith("image/")) {
@@ -95,7 +85,9 @@ export function ReceiptScanner({ formRef, currency }: Props) {
     startTransition(async () => {
       const form = new FormData();
       form.append("file", file);
-      form.append("categories", CATEGORIES.join(","));
+      const typeField = formRef.current?.elements.namedItem("type");
+      const type = typeField instanceof HTMLSelectElement ? typeField.value : "expense";
+      form.append("categories", JSON.stringify(categories.filter((category) => category.type === type).map((category) => category.name)));
 
       const result = await scanReceipt(form);
 
@@ -188,7 +180,7 @@ export function ReceiptScanner({ formRef, currency }: Props) {
             {isScanning ? (
               <>
                 <div className="scanner-spinner" aria-hidden="true" />
-                <span>Analyzing with Gemini Flash…</span>
+                <span>Analyzing with Gemini Live…</span>
               </>
             ) : (
               <>
@@ -197,7 +189,7 @@ export function ReceiptScanner({ formRef, currency }: Props) {
                   <path d="M3 9h18M3 15h18M9 3v18M15 3v18" strokeWidth="1" />
                 </svg>
                 <span>Drop receipt image here</span>
-                <span className="scanner-sub">or click to browse</span>
+                <span className="scanner-sub">JPEG, PNG, or WebP · up to 10 MB</span>
               </>
             )}
           </div>
