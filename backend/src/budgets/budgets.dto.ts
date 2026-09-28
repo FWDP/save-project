@@ -8,9 +8,10 @@ import {
 } from 'class-validator';
 
 export class CreateBudgetDto {
+  @IsOptional()
   @IsString()
   @IsNotEmpty()
-  userId: string;
+  userId?: string;
 
   @IsString()
   @IsNotEmpty()

@@ -56,17 +56,25 @@ export function WorkspaceForm({
       </label>
       <label>
         Workspace currency
-        <select name="currency" defaultValue="PHP">
-          {CURRENCIES.map((code) => (
-            <option key={code} value={code}>
-              {code} · {currencyName(code)}
-            </option>
-          ))}
-        </select>
+        {kind === "personal" ? (
+          <>
+            <input type="hidden" name="currency" value="PHP" />
+            <span>PHP · {currencyName("PHP")}</span>
+          </>
+        ) : (
+          <select name="currency" defaultValue="PHP">
+            {CURRENCIES.map((code) => (
+              <option key={code} value={code}>
+                {code} · {currencyName(code)}
+              </option>
+            ))}
+          </select>
+        )}
       </label>
       <p className="field-help">
-        All records use this currency. It cannot be changed after creation.
-        Dates use Asia/Manila time.
+        Personal workspaces use PHP to keep Web and Mobile in sync. Business
+        workspace currency cannot be changed after creation. Dates use
+        Asia/Manila time.
       </p>
       {state.error && (
         <p className="notice danger" role="alert">

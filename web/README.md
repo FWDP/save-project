@@ -1,6 +1,6 @@
 # SAVE Web
 
-The customer Web app lives separately from Expo mobile and the `admin/` prototype. This first implementation supports email/password, Google and email-link authentication; personal/business workspace creation and switching; workspace-isolated transactions; period/search/type filters; pagination; transaction editing/deletion with revision checks; overview aggregates; reports and summary CSV export.
+The customer Web app lives separately from Expo mobile and the `admin/` prototype. It supports email/password, Google and email-link authentication; personal/business workspace creation and switching; shared personal PHP transactions, categories, monthly budgets and savings trackers; business-isolated transactions; period/search/type filters; pagination; transaction editing/deletion with revision checks; overview aggregates; reports and summary CSV export.
 
 ## Run locally
 
@@ -18,11 +18,13 @@ An unconfigured sign-in page explains availability and disables sign-in controls
 
 The new API is `/workspaces` with nested `/workspaces/:id/transactions` routes. Workspaces contain authoritative active/suspended memberships. Owners receive the owner role through creation; request bodies cannot supply membership or ownership. Personal-workspace uniqueness and create mutation IDs are enforced by MongoDB indexes. Amounts use integer minor units with currency-specific precision. Transaction updates/deletes compare a revision and reject stale writes.
 
-Workspace records live in a separate `workspace_transactions` collection. Existing mobile user-scoped records are left intact and **are not yet shared or migrated** into Web workspaces. Do not assume changing a workspace is just a view over the mobile database. The migration decision and follow-up work are documented in the implementation plan.
+Personal PHP finance data is shared with SAVE Mobile. Personal workspace transaction endpoints use the same owner-scoped transaction records as Mobile; existing personal Web transaction records are copied idempotently on first access and retained in `workspace_transactions` with a migration marker. No records are deleted. Categories, budgets and savings goals use the same owner-scoped APIs as Mobile. Business transactions remain isolated in `workspace_transactions`; business workspaces do not expose personal budgets, categories or savings goals.
+
+New personal workspaces are PHP-only because Mobile records personal finance amounts in PHP. Existing personal workspaces in another currency remain Web-only and display a warning; their amounts are not converted or relabeled. Business workspaces retain the supported multi-currency options.
 
 This release supports business record tracking, not an approval workflow. Roles are enforced by the API, but member invitations and role administration are not yet exposed. Members can view/edit their own records, viewers cannot write, and owners/admins/finance roles can manage records in their workspace. The API does not allow self-service role escalation.
 
-Still to implement: approved migration/shared mobile workspace model, invitations, approvals/audit trail, budgets, savings, private receipt upload, full transaction exports/import jobs, recurring schedules, and booking foreign-currency transactions with stored historical rates. Only implemented destinations are included in navigation.
+Still to implement: invitations, approvals/audit trail, private receipt upload, full transaction exports/import jobs, recurring schedules, and booking foreign-currency transactions with stored historical rates. Stellar signing and vault management remain Mobile workflows.
 
 ## Checks
 
@@ -40,11 +42,11 @@ Production build, Web/backend source lint, backend test suites and finance utili
 
 ## Supported workspace currencies
 
-Choose the currency when creating a personal or business workspace: PHP, USD, EUR, GBP, JPY, CNY, TWD (New Taiwan dollar / NTD), HKD, SGD, AUD, CAD, CHF, NZD, INR, KRW, AED, SAR, THB, MYR, IDR, VND, KWD and BHD.
+Business workspaces can choose from PHP, USD, EUR, GBP, JPY, CNY, TWD (New Taiwan dollar / NTD), HKD, SGD, AUD, CAD, CHF, NZD, INR, KRW, AED, SAR, THB, MYR, IDR, VND, KWD and BHD. Personal workspaces use PHP so records remain correctly shared with Mobile.
 
 A workspace uses one fixed currency. Transactions, summaries, forms and CSV exports use that currency and its minor-unit precision. JPY/KRW/VND accept whole units; KWD/BHD accept three decimals; the other supported currencies accept two. Excess decimals are rejected rather than rounded. Currency codes are displayed to distinguish currencies with similar symbols.
 
-Existing workspaces remain PHP. Currency cannot be changed after creation, so stored amounts cannot accidentally be relabeled as another currency. Reports can display a current-rate conversion estimate; original records and their workspace currency remain unchanged. Native mobile currency support and a shared-data migration remain separate follow-up work.
+Currency cannot be changed after creation, so stored amounts cannot accidentally be relabeled as another currency. Reports can display a current-rate conversion estimate; original records and their workspace currency remain unchanged. Existing non-PHP personal workspaces are not automatically converted.
 
 ## Live exchange-rate conversion
 
@@ -57,3 +59,9 @@ Rates older than five minutes, future timestamps beyond clock tolerance, missing
 Amounts use decimal rational arithmetic, rounded to the target currency's minor unit. Net balance is converted income minus converted expenses, so the displayed totals reconcile. Category totals are rounded independently and may differ slightly from the overall expense total. Conversions are indicative current-rate estimates, including when viewing past months; they are not historical accounting restatements or executable bank quotes. Bank spreads and fees are not included. Transaction storage remains in the workspace currency; foreign-currency booking and locked transaction-date rates are follow-up work.
 
 Validation: conversion arithmetic/cache/freshness/access tests, production build and lint pass. Isolated browser checks cover target selection, refresh, timestamp display, converted CSV metadata and outage recovery. A live configured-provider check confirmed TWD/CNY/KRW coverage but returned an older daily timestamp, which the freshness gate rejected. Minute-level provider access is still required to activate live conversions.
+
+## SAVE Mobile data sync
+
+Personal transaction, category, budget and savings-goal changes made on Web use the same authenticated API records read by Mobile. The Mobile finance provider refreshes transactions, categories and budgets every 30 seconds while active and when returning to the foreground. Savings goals refresh on the same cadence, when the Mobile savings screen opens or returns to the foreground, and when manually refreshed.
+
+The first request to a PHP personal workspace also copies any pre-existing workspace transactions to the owner's Mobile transaction collection using the original transaction IDs and mutation IDs. The copy is idempotent and the original records remain available; backend state marks completed imports to avoid rescanning them. This migration is additive, not a currency conversion. Web budget spending is calculated from the same personal transaction records used by Mobile.

@@ -1,6 +1,7 @@
 import {
   IsDateString,
   IsEnum,
+  IsInt,
   IsNotEmpty,
   IsNumber,
   IsObject,
@@ -16,9 +17,10 @@ export class CreateTransactionDto {
   @IsString()
   clientMutationId?: string;
 
+  @IsOptional()
   @IsString()
   @IsNotEmpty()
-  userId: string;
+  userId?: string;
 
   @IsEnum(['expense', 'income'])
   type: 'expense' | 'income';
@@ -117,4 +119,16 @@ export class UpdateTransactionDto {
   @IsOptional()
   @IsObject()
   customFields?: Record<string, string>;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  revision?: number;
+}
+
+export class DeleteTransactionDto {
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  revision?: number;
 }
