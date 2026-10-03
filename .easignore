@@ -1,0 +1,87 @@
+# EAS uses this file instead of .gitignore. Keep shared exclusions in sync.
+# Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
+
+# dependencies
+node_modules/
+
+# Expo & Next
+.expo/
+.next/
+*.old
+dist/
+web-build/
+expo-env.d.ts
+
+# Native
+.kotlin/
+*.orig.*
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+
+# Metro
+.metro-health-check*
+
+# debug
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+
+# macOS
+.DS_Store
+*.pem
+
+# local env files
+.env*.local
+*.env
+!**/.env.example
+/backend/.stellar_integrity_signer_secret
+
+# typescript
+*.tsbuildinfo
+
+# Rust / Soroban
+/contract/target/
+
+example
+
+# generated native folders
+/ios
+/android
+
+# Local environment files; configure cloud values in EAS environments.
+.env.*
+!**/.env.example
+
+# Separate services and applications (not imported by the mobile app).
+/backend/
+/admin/
+/web/
+/contract/
+/ops/
+
+# Documentation, tests, screenshots, and local tooling.
+/docs/
+/tests/
+/screenshots/
+/coverage/
+/.git/
+/.github/
+/.vscode/
+/.agents/
+/.claude/
+/.codex/
+/AGENTS.md
+/CLAUDE.md
+/README.md
+/SECURITY.md
+/docker-compose.yml
+/save.local.nginx.conf
+
+# Build artifacts and logs.
+*.apk
+*.aab
+*.ipa
+*.log

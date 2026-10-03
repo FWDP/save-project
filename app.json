@@ -2,6 +2,7 @@
   "expo": {
     "name": "save-project",
     "slug": "save-project",
+    "owner": "fwdp-rel8ph",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -53,7 +54,7 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "3a242dc5-fe6a-4a19-94f0-3e6dda1d95a1"
+        "projectId": "64dbbadb-56dd-4617-ad60-aa9747af13dd"
       }
     }
   }
