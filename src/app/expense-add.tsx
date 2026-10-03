@@ -1,7 +1,8 @@
 import { WorkspaceScope } from '@/components/workspace-scope';
 import { useWorkspaceFinance } from '@/components/providers/workspace-finance-provider';
 import { useRefreshFinance } from '@/components/providers/finance-data-provider';
-import { persistReceipt, readReceiptAsBase64 } from '@/lib/receipt-file';
+import { persistReceipt } from '@/lib/receipt-file';
+import { receiptDraftFields } from '@/lib/receipt-draft';
 import { scanReceiptWithAi } from '@/lib/api';
 import { DateField } from '@/components/date-field';
 import { validDate } from '@/lib/finance';
@@ -32,7 +33,8 @@ function AddExpenseScreen() {
   const [saving, setSaving] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
-  const [aiStatus, setAiStatus] = useState<string | null>(null);
+  const aiStatus = draft.receiptStatus;
+  const setAiStatus = (receiptStatus: string) => patchDraft({ receiptStatus });
   const availableCategories = useMemo(
     () => categories.filter((item) => item.type === draft.type),
     [categories, draft.type],
@@ -45,30 +47,8 @@ function AddExpenseScreen() {
     setAnalyzing(true);
     setAiStatus('✨ Gemini AI is analyzing your receipt…');
     try {
-      const base64 = await readReceiptAsBase64(localUri);
-      const categoryNames = availableCategories.map((c) => c.name);
-      const parsed = await scanReceiptWithAi(base64, mimeType, categoryNames);
-
-      const updates: Partial<typeof draft> = {};
-      if (parsed.amount) updates.amount = parsed.amount.toString();
-      if (parsed.merchant) updates.merchant = parsed.merchant;
-      if (parsed.date) updates.date = parsed.date;
-      if (parsed.notes && !draft.description) updates.description = parsed.notes;
-      else if (parsed.merchant && !draft.description)
-        updates.description = `Purchase at ${parsed.merchant}`;
-
-      if (parsed.category) {
-        const matched = availableCategories.find(
-          (c) => c.name.toLowerCase() === parsed.category?.toLowerCase(),
-        );
-        if (matched) {
-          updates.category = matched.name;
-        } else if (!draft.category) {
-          updates.category = parsed.category;
-        }
-      }
-
-      patchDraft(updates);
+      const parsed = await scanReceiptWithAi(localUri, mimeType, availableCategories.map(c => c.name));
+      patchDraft(receiptDraftFields(parsed, availableCategories));
       setAiStatus(
         `✓ Scanned with Gemini AI: ${parsed.merchant || 'Receipt'} (${parsed.currency || '₱'}${parsed.amount})`,
       );
@@ -98,7 +78,7 @@ function AddExpenseScreen() {
     setAnalyzing(true);
     try {
       const selected = await File.pickFileAsync({
-        mimeTypes: ['image/*', 'application/pdf'],
+        mimeTypes: ['image/jpeg', 'image/png', 'image/webp'],
       });
       if (!selected.canceled) {
         const localUri = await persistReceipt(selected.result.uri);
@@ -113,11 +93,11 @@ function AddExpenseScreen() {
     }
   };
   const submit = async () => {
-    if (saving) return;
+    if (saving || analyzing) return;
     const amount = Number(draft.amount);
     if (
       !validDate(draft.date) ||
-      !draft.category ||
+      !draft.category.trim() ||
       !draft.description.trim() ||
       !Number.isFinite(amount) ||
       amount <= 0
@@ -136,7 +116,7 @@ function AddExpenseScreen() {
         userId: '',
         type: draft.type,
         amount,
-        category: draft.category,
+        category: draft.category.trim(),
         description: draft.description.trim(),
         date: draft.date,
         status: 'approved',
@@ -167,7 +147,7 @@ function AddExpenseScreen() {
 
   return (
     <FinancePage
-      title="Add Expense"
+      title="Add Transaction"
       subtitle="Create an expense or income record"
     >
       <View style={styles.segment}>
@@ -205,21 +185,23 @@ function AddExpenseScreen() {
         />
       </View>
       <Text style={styles.label}>
-        {draft.type === 'expense' ? 'Category' : 'Income Source'} *
+        Category *
       </Text>
       <View style={styles.categoryRow}>
-        <Pressable
-          style={styles.select}
-          onPress={() => setShowCategories((value) => !value)}
-        >
-          <Text
-            style={[styles.inputText, !draft.category && styles.placeholder]}
-          >
-            {draft.category ||
-              `Select ${draft.type === 'expense' ? 'category' : 'income source'}…`}
-          </Text>
-          <Text style={styles.inputText}>⌄</Text>
-        </Pressable>
+        <View style={styles.select}>
+          <TextInput
+            accessibilityLabel="Category"
+            style={[styles.inputText, { flex: 1 }]}
+            value={draft.category}
+            maxLength={80}
+            placeholder="Category / Subcategory"
+            placeholderTextColor="#65738c"
+            onChangeText={(category) => patchDraft({ category })}
+          />
+          <Pressable accessibilityLabel="Choose category" onPress={() => setShowCategories(value => !value)}>
+            <Text style={styles.inputText}>⌄</Text>
+          </Pressable>
+        </View>
         <Pressable
           style={styles.newButton}
           onPress={() => router.push('/categories')}
@@ -246,6 +228,7 @@ function AddExpenseScreen() {
       ) : null}
       <Field
         label="Description *"
+        maxLength={160}
         value={draft.description}
         onChangeText={(description) => patchDraft({ description })}
         placeholder={
@@ -255,7 +238,8 @@ function AddExpenseScreen() {
         }
       />
       <Field
-        label="Merchant / Store"
+        label="Merchant or source"
+        maxLength={120}
         value={draft.merchant}
         onChangeText={(merchant) => patchDraft({ merchant })}
         placeholder="e.g. Jollibee, SM Mall, Lazada…"
@@ -330,7 +314,7 @@ function AddExpenseScreen() {
           >
             <Text style={styles.receiptIcon}>⇧</Text>
             <Text style={styles.receiptTitle}>Upload File</Text>
-            <Text style={styles.receiptMeta}>Image or PDF</Text>
+            <Text style={styles.receiptMeta}>JPEG, PNG, WebP</Text>
           </Pressable>
         </View>
         {analyzing ? (
@@ -363,7 +347,7 @@ function AddExpenseScreen() {
         >
           <Text style={styles.cancelText}>Cancel</Text>
         </Pressable>
-        <Pressable disabled={saving} style={styles.submit} onPress={submit}>
+        <Pressable disabled={saving || analyzing} style={styles.submit} onPress={submit}>
           <Text style={styles.submitText}>
             {saving
               ? 'Saving…'
@@ -386,12 +370,14 @@ function Field({
   onChangeText: (value: string) => void;
   placeholder: string;
   keyboardType?: 'decimal-pad';
+  maxLength?: number;
 }) {
   return (
     <View style={styles.field}>
       <Text style={styles.label}>{label}</Text>
       <TextInput
         {...props}
+        accessibilityLabel={label}
         placeholderTextColor="#65738c"
         style={styles.input}
       />

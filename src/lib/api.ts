@@ -184,9 +184,9 @@ export function getApiBaseUrl(): string {
   return 'http://localhost:3000';
 }
 
-async function apiFetch(url: string, options?: RequestInit) {
+async function apiFetch(url: string, options?: RequestInit, timeoutMs = 30_000) {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 30_000);
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
     return await fetch(url, { ...options, signal: controller.signal });
   } finally {
@@ -552,28 +552,30 @@ export type ApiParsedReceipt = {
 };
 
 export async function scanReceiptWithAi(
-  imageBase64: string,
+  uri: string,
   mimeType = 'image/jpeg',
   categories: string[] = [],
 ): Promise<ApiParsedReceipt> {
-  const url = `${getApiBaseUrl()}/receipts/scan`;
-  const token = await accessToken();
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-  };
-  if (token) {
-    headers.Authorization = `Bearer ${token}`;
+  if (!['image/jpeg', 'image/png', 'image/webp'].includes(mimeType)) {
+    throw new Error('Choose a JPEG, PNG, or WebP image. Convert PDFs to images before scanning.');
   }
-
-  const response = await apiFetch(url, {
+  const token = await accessToken();
+  const body = new FormData();
+  const name = `receipt.${mimeType.split('/')[1]}`;
+  if (Platform.OS === 'web') {
+    const image = await fetch(uri);
+    if (!image.ok) throw new Error('Could not read the receipt image.');
+    body.append('file', await image.blob(), name);
+  } else {
+    // React Native uploads local files by URI; let fetch set the multipart boundary.
+    body.append('file', { uri, type: mimeType, name } as unknown as Blob);
+  }
+  body.append('categories', JSON.stringify(categories));
+  const response = await apiFetch(`${getApiBaseUrl()}/receipts/scan`, {
     method: 'POST',
-    headers,
-    body: JSON.stringify({
-      imageBase64,
-      mimeType,
-      categories,
-    }),
-  });
+    headers: { Authorization: `Bearer ${token}` },
+    body,
+  }, 60_000);
 
   if (!response.ok) {
     let errMessage = `Failed to scan receipt (HTTP ${response.status})`;

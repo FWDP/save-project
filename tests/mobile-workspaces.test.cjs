@@ -190,3 +190,68 @@ test('personal workspace import runs before the account refresh, and refresh sti
   );
   assert.deepEqual(calls, ['workspace:broken', 'account']);
 });
+
+test('receipt scans upload native files as authenticated multipart and surface API errors', async () => {
+  const previousFetch = global.fetch;
+  const previousFormData = global.FormData;
+  class NativeFormData {
+    fields = new Map();
+    append(name, value) { this.fields.set(name, value); }
+  }
+  global.FormData = NativeFormData;
+  const parsed = { merchant: 'Shop', amount: 125.5, date: '2026-10-03', category: 'Food' };
+  global.fetch = async (url, options) => {
+    assert.ok(url.endsWith('/receipts/scan'));
+    assert.equal(options.headers.Authorization, 'Bearer test-token');
+    assert.equal(options.headers['Content-Type'], undefined);
+    assert.deepEqual(options.body.fields.get('file'), { uri: 'file:///receipt.jpg', type: 'image/jpeg', name: 'receipt.jpeg' });
+    assert.deepEqual(JSON.parse(options.body.fields.get('categories')), ['Food']);
+    return new Response(JSON.stringify(parsed), { status: 200 });
+  };
+  try {
+    const api = load(path.join(root, 'api.ts'), {
+      './auth': { accessToken: async () => 'test-token' },
+      'expo-constants': { default: {} }, 'react-native': { Platform: { OS: 'android' } },
+    });
+    assert.deepEqual(await api.scanReceiptWithAi('file:///receipt.jpg', 'image/jpeg', ['Food']), parsed);
+    await assert.rejects(api.scanReceiptWithAi('file:///receipt.pdf', 'application/pdf'), /Convert PDFs/);
+    global.fetch = async () => new Response(JSON.stringify({ message: 'Gemini Live could not complete the scan.' }), { status: 503 });
+    await assert.rejects(api.scanReceiptWithAi('file:///receipt.jpg'), /Gemini Live could not complete/);
+  } finally { global.fetch = previousFetch; global.FormData = previousFormData; }
+});
+
+test('receipt results fill editable fields with Web limits and retain transaction type and personal details', () => {
+  const { receiptDraftFields } = load(path.join(root, 'receipt-draft.ts'));
+  const receipt = { merchant: '  Shop  ', amount: 125.5, date: '2026-10-02', currency: 'PHP', category: 'food / lunch', notes: 'Lunch items' };
+  const fields = receiptDraftFields(receipt, [{ name: 'Food / Lunch' }]);
+  assert.deepEqual(fields, { merchant: 'Shop', amount: '125.5', date: '2026-10-02', category: 'Food / Lunch', description: 'Lunch items' });
+  const draft = { type: 'income', tags: 'work', customFields: [{ label: 'Project', value: 'SAVE' }], receiptUri: 'file:///receipt.jpg', amount: '', date: '2026-10-03' };
+  const filled = { ...draft, ...fields };
+  assert.equal(filled.type, 'income');
+  assert.equal(filled.tags, 'work');
+  assert.equal(filled.customFields, draft.customFields);
+  assert.equal(filled.receiptUri, draft.receiptUri);
+  assert.equal(filled.date, '2026-10-02');
+  assert.equal(receiptDraftFields({ ...receipt, notes: undefined }, []).description, 'Purchase at Shop');
+  assert.equal(receiptDraftFields({ ...receipt, notes: 'x'.repeat(2000) }, []).description.length, 160);
+  assert.throws(() => receiptDraftFields({ ...receipt, currency: 'USD' }, []), /converted amount/);
+  assert.throws(() => receiptDraftFields({ ...receipt, date: '2026-02-30' }, []), /amount or date/);
+  assert.throws(() => receiptDraftFields({ ...receipt, amount: 0 }, []), /amount or date/);
+});
+
+test('Transactions shows both types across all dates and pending uploads unless explicitly filtered', () => {
+  const { filterTransactions } = load(path.join(root, 'transaction-filters.ts'));
+  const rows = [
+    { id: 'old-income', type: 'income', date: '2025-01-10', description: 'Salary', category: 'Work' },
+    { id: 'expense', type: 'expense', date: '2026-09-01', description: 'Lunch', merchant: 'Cafe', category: 'Food' },
+    { id: 'pending', type: 'expense', date: '2026-10-03', description: 'Train', tags: ['Travel'], syncState: 'pending' },
+  ];
+  const options = { type: 'all', search: '', ascending: false };
+  assert.deepEqual(filterTransactions(rows, options).map(row => row.id), ['pending', 'expense', 'old-income']);
+  assert.deepEqual(filterTransactions(rows, { ...options, type: 'income' }).map(row => row.id), ['old-income']);
+  assert.deepEqual(filterTransactions(rows, { ...options, month: '2026-09' }).map(row => row.id), ['expense']);
+  assert.deepEqual(filterTransactions(rows, { ...options, search: ' TRAVEL ' }).map(row => row.id), ['pending']);
+  assert.deepEqual(filterTransactions(rows, { ...options, search: 'cafe' }).map(row => row.id), ['expense']);
+  assert.deepEqual(filterTransactions(rows, { ...options, ascending: true }).map(row => row.id), ['old-income', 'expense', 'pending']);
+  assert.equal(rows[0].id, 'old-income');
+});

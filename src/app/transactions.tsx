@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   Pressable,
   StyleSheet,
@@ -13,61 +13,21 @@ import { FinancePage } from '@/components/layout/finance-page';
 import { MonthPicker } from '@/components/month-picker';
 import { useWorkspaceFinance } from '@/components/providers/workspace-finance-provider';
 import { WorkspaceScope } from '@/components/workspace-scope';
-import { monthTransactions } from '@/lib/finance';
-import { fetchWorkspaceTransactions, type ApiTransaction } from '@/lib/api';
-import { workspaceTransaction } from '@/lib/workspace-records';
+import { filterTransactions } from '@/lib/transaction-filters';
 
 function TransactionsScreen() {
   const router = useRouter();
   const { transactions, selectedMonth, isLoading, refresh, currency, workspace } = useWorkspaceFinance();
-  const [monthRows, setMonthRows] = useState<ApiTransaction[] | null>(null);
-  const [monthLoading, setMonthLoading] = useState(false);
-  useEffect(() => {
-    let active = true;
-    const loadMonth = async () => {
-      if (!workspace) { setMonthRows(null); return; }
-      setMonthLoading(true);
-      try {
-        const first = await fetchWorkspaceTransactions(workspace.id, 1, selectedMonth);
-        const rows = [...first.items];
-        for (let page = 2; page <= Math.ceil(first.total / first.pageSize); page++) {
-          const next = await fetchWorkspaceTransactions(workspace.id, page, selectedMonth);
-          rows.push(...next.items);
-        }
-        if (active) setMonthRows(rows.map(row => workspaceTransaction(row, workspace.currency)));
-      } catch {
-        if (active) setMonthRows(null);
-      } finally {
-        if (active) setMonthLoading(false);
-      }
-    };
-    void loadMonth();
-    return () => { active = false; };
-  }, [workspace, selectedMonth]);
-  const visibleTransactions = monthRows ?? monthTransactions(transactions, selectedMonth);
+  const [period, setPeriod] = useState<'all' | 'month'>('all');
   const [search, setSearch] = useState('');
   const [type, setType] = useState<'all' | 'expense' | 'income'>('all');
   const [ascending, setAscending] = useState(false);
   const filtered = useMemo(
-    () =>
-      visibleTransactions
-        .filter((item) => type === 'all' || item.type === type)
-        .filter((item) =>
-          [
-            item.description,
-            item.merchant,
-            item.category,
-            ...(item.tags ?? []),
-          ].some((value) =>
-            value?.toLowerCase().includes(search.trim().toLowerCase()),
-          ),
-        )
-        .sort((a, b) =>
-          ascending
-            ? a.date.localeCompare(b.date)
-            : b.date.localeCompare(a.date),
-        ),
-    [visibleTransactions, type, search, ascending],
+    () => filterTransactions(transactions, {
+      month: period === 'month' ? selectedMonth : undefined,
+      type, search, ascending,
+    }),
+    [transactions, period, selectedMonth, type, search, ascending],
   );
   const sections = useMemo(() => {
     const groups = new Map<string, typeof filtered>();
@@ -78,7 +38,7 @@ function TransactionsScreen() {
   return (
     <FinancePage
       title="Transactions"
-      subtitle={`${filtered.length} records in this period`}
+      subtitle={`${filtered.length} records · ${period === 'all' ? 'All dates' : selectedMonth}`}
       scroll={false}
     >
       <SectionList
@@ -88,14 +48,27 @@ function TransactionsScreen() {
         stickySectionHeadersEnabled={false}
         refreshControl={
           <RefreshControl
-            refreshing={isLoading || monthLoading}
+            refreshing={isLoading}
             onRefresh={refresh}
             tintColor="#55a6ff"
           />
         }
         ListHeaderComponent={
           <View style={styles.header}>
-            <MonthPicker />
+            <View style={styles.filters}>
+              {(['all', 'month'] as const).map(value => (
+                <Pressable
+                  key={value}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: period === value }}
+                  style={[styles.chip, period === value && styles.selected]}
+                  onPress={() => setPeriod(value)}
+                >
+                  <Text style={styles.text}>{value === 'all' ? 'All dates' : 'By month'}</Text>
+                </Pressable>
+              ))}
+            </View>
+            {period === 'month' ? <MonthPicker /> : null}
             <Pressable
               disabled={workspace?.role === 'viewer'}
               style={styles.add}
@@ -122,7 +95,7 @@ function TransactionsScreen() {
                 >
                   <Text style={styles.text}>
                     {value === 'all'
-                      ? 'All'
+                      ? 'All types'
                       : value === 'expense'
                         ? 'Expenses'
                         : 'Income'}
@@ -146,6 +119,7 @@ function TransactionsScreen() {
               weekday: 'short',
               month: 'short',
               day: 'numeric',
+              year: 'numeric',
             })}
           </Text>
         )}
@@ -177,11 +151,11 @@ function TransactionsScreen() {
         )}
         ListEmptyComponent={
           <Text style={styles.empty}>
-            {isLoading || monthLoading
+            {isLoading
               ? 'Loading transactions…'
               : search
                 ? 'No matches. Try a different search.'
-                : 'No transactions this month. Add your first record above.'}
+                : 'No transactions match the selected filters in this workspace.'}
           </Text>
         }
       />

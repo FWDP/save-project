@@ -1,6 +1,7 @@
 import { WorkspaceScope } from '@/components/workspace-scope';
 import { useWorkspaceFinance } from '@/components/providers/workspace-finance-provider';
-import { persistReceipt, readReceiptAsBase64 } from '@/lib/receipt-file';
+import { persistReceipt } from '@/lib/receipt-file';
+import { receiptDraftFields } from '@/lib/receipt-draft';
 import { scanReceiptWithAi } from '@/lib/api';
 import { useRef, useState } from 'react';
 import {
@@ -98,45 +99,25 @@ function ReceiptCameraScreen() {
             disabled={analyzing}
             style={[styles.confirmButton, styles.confirmButtonPrimary]}
             onPress={async () => {
+              if (analyzing) return;
               setAnalyzing(true);
               try {
                 const localUri = await persistReceipt(photoUri);
                 patchDraft({ receiptUri: localUri });
                 setAnalyzing(true);
                 try {
-                  const base64 = await readReceiptAsBase64(localUri);
-                  const categoryNames = categories
-                    .filter((c) => c.type === draft.type)
-                    .map((c) => c.name);
-                  const parsed = await scanReceiptWithAi(
-                    base64,
-                    'image/jpeg',
-                    categoryNames,
-                  );
-
-                  const updates: Partial<typeof draft> = {};
-                  if (parsed.amount) updates.amount = parsed.amount.toString();
-                  if (parsed.merchant) updates.merchant = parsed.merchant;
-                  if (parsed.date) updates.date = parsed.date;
-                  if (parsed.notes && !draft.description)
-                    updates.description = parsed.notes;
-                  else if (parsed.merchant && !draft.description)
-                    updates.description = `Purchase at ${parsed.merchant}`;
-
-                  if (parsed.category) {
-                    const matched = categories.find(
-                      (c) =>
-                        c.name.toLowerCase() ===
-                        parsed.category?.toLowerCase(),
-                    );
-                    if (matched) updates.category = matched.name;
-                    else if (!draft.category) updates.category = parsed.category;
-                  }
-                  patchDraft(updates);
-                } catch {
-                  // If AI parsing is offline/fails, the photo remains safely attached locally
+                  const choices = categories.filter(c => c.type === draft.type);
+                  const parsed = await scanReceiptWithAi(localUri, 'image/jpeg', choices.map(c => c.name));
+                  patchDraft({
+                    ...receiptDraftFields(parsed, choices),
+                    receiptStatus: '✓ Receipt scanned. Review the filled fields before saving.',
+                  });
+                } catch (error) {
+                  const message = error instanceof Error ? error.message : 'Could not read the receipt.';
+                  patchDraft({ receiptStatus: `AI pre-fill unavailable: ${message} Photo attached; enter details manually or retry.` });
+                  Alert.alert('Receipt scan unavailable', message);
                 }
-                router.back();
+                router.dismissTo('/expense-add');
               } catch {
                 Alert.alert(
                   'Attachment failed',

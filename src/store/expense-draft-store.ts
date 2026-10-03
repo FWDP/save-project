@@ -11,6 +11,7 @@ export type ExpenseDraft = {
   tags: string;
   recurring: boolean;
   receiptUri?: string;
+  receiptStatus?: string;
   customFields: { label: string; value: string }[];
 };
 
