@@ -11,7 +11,7 @@ export function TransactionForm({
   workspaceId,
   mutationId,
   currency,
-  categories,
+  categories = [],
   date,
   item,
   readOnly = false,
