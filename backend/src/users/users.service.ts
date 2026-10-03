@@ -1,14 +1,11 @@
 import {
-  Injectable,
-  NotFoundException,
-  OnModuleInit,
-  ServiceUnavailableException,
+    Injectable,
+    NotFoundException,
+    OnModuleInit,
+    ServiceUnavailableException,
 } from '@nestjs/common';
-import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
-
+import { DatabaseService, newRecordId } from '../database/database.service';
 import { CreateUserDto, UpdateUserDto } from './users.dto';
-import { User, UserDocument } from './user.schema';
 
 export type UserResponse = {
   id: string;
@@ -18,161 +15,91 @@ export type UserResponse = {
   createdAt: string;
 };
 
-const DEMO_USERS: UserResponse[] = [
-  {
-    id: 'usr_1',
-    name: 'Super Admin',
-    email: 'admin@save.app',
-    role: 'admin',
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: 'usr_2',
-    name: 'Marcus Lee',
-    email: 'marcus@save.app',
-    role: 'user',
-    createdAt: new Date().toISOString(),
-  },
-];
+const DEMO_USERS = [
+  { name: 'Super Admin', email: 'admin@save.app', role: 'admin' },
+  { name: 'Marcus Lee', email: 'marcus@save.app', role: 'user' },
+] as const;
 
-function toUserResponse(doc: any): UserResponse {
+function toUserResponse(row: any): UserResponse {
   return {
-    id: doc._id?.toString() ?? doc.id,
-    name: doc.name,
-    email: doc.email,
-    role: doc.role,
-    createdAt:
-      doc.createdAt instanceof Date
-        ? doc.createdAt.toISOString()
-        : doc.createdAt || new Date().toISOString(),
+    id: row.legacy_id,
+    name: row.name,
+    email: row.email,
+    role: row.role,
+    createdAt: row.created_at instanceof Date
+      ? row.created_at.toISOString()
+      : String(row.created_at),
   };
 }
 
 @Injectable()
 export class UsersService implements OnModuleInit {
-  constructor(
-    @InjectModel(User.name) private readonly userModel: Model<UserDocument>,
-  ) {}
+  constructor(private readonly database: DatabaseService) {}
+
+  private async db<T>(operation: () => Promise<T>): Promise<T> {
+    try {
+      return await operation();
+    } catch {
+      throw new ServiceUnavailableException('Database unavailable. Please retry.');
+    }
+  }
 
   async onModuleInit() {
     if (process.env.SAVE_DEMO_MODE !== 'true') return;
-    try {
-      const count = await this.userModel.countDocuments();
-      if (count === 0) {
-        await this.userModel.insertMany(
-          DEMO_USERS.map(({ name, email, role }) => ({ name, email, role })),
+    await this.db(async () => {
+      const count = await this.database.query('select count(*)::int as count from public.user_profiles');
+      if (count.rows[0].count > 0) return;
+      for (const user of DEMO_USERS) {
+        await this.database.query(
+          'insert into public.user_profiles (legacy_id, name, email, role) values ($1, $2, $3, $4) on conflict do nothing',
+          [newRecordId(), user.name, user.email, user.role],
         );
       }
-    } catch {
-      if (process.env.SAVE_DEMO_MODE !== 'true')
-        throw new ServiceUnavailableException(
-          'Database unavailable. Please retry.',
-        );
-      // Ignore if DB is offline during module init
-    }
+    });
   }
 
   async findAll(): Promise<UserResponse[]> {
-    try {
-      const users = await this.userModel.find().sort({ createdAt: -1 }).lean();
-      return users.map(toUserResponse);
-    } catch {
-      if (process.env.SAVE_DEMO_MODE !== 'true')
-        throw new ServiceUnavailableException(
-          'Database unavailable. Please retry.',
-        );
-      // Fallback
-    }
-    return DEMO_USERS;
+    const rows = await this.db(async () => (await this.database.query(
+      'select legacy_id, name, email, role, created_at from public.user_profiles order by created_at desc',
+    )).rows);
+    return rows.map(toUserResponse);
   }
 
   async findOne(id: string): Promise<UserResponse> {
-    try {
-      if (Types.ObjectId.isValid(id)) {
-        const user = await this.userModel.findById(id).lean();
-        if (user) return toUserResponse(user);
-      }
-    } catch {
-      if (process.env.SAVE_DEMO_MODE !== 'true')
-        throw new ServiceUnavailableException(
-          'Database unavailable. Please retry.',
-        );
-      // Fallback
-    }
-
-    const fallback = DEMO_USERS.find((u) => u.id === id);
-    if (fallback) return fallback;
-
-    throw new NotFoundException(`User with id ${id} not found`);
+    if (!/^[a-f0-9]{24}$/i.test(id)) throw new NotFoundException(`User with id ${id} not found`);
+    const row = await this.db(async () => (await this.database.query(
+      'select legacy_id, name, email, role, created_at from public.user_profiles where legacy_id = $1',
+      [id],
+    )).rows[0]);
+    if (!row) throw new NotFoundException(`User with id ${id} not found`);
+    return toUserResponse(row);
   }
 
   async create(dto: CreateUserDto): Promise<UserResponse> {
-    try {
-      const user = new this.userModel(dto);
-      const saved = await user.save();
-      return toUserResponse(saved.toObject());
-    } catch {
-      if (process.env.SAVE_DEMO_MODE !== 'true')
-        throw new ServiceUnavailableException(
-          'Database unavailable. Please retry.',
-        );
-      const fallback: UserResponse = {
-        id: `usr_${Date.now()}`,
-        name: dto.name,
-        email: dto.email,
-        role: dto.role,
-        createdAt: new Date().toISOString(),
-      };
-      DEMO_USERS.push(fallback);
-      return fallback;
-    }
+    const row = await this.db(async () => (await this.database.query(
+      'insert into public.user_profiles (legacy_id, name, email, role) values ($1, $2, $3, $4) returning legacy_id, name, email, role, created_at',
+      [newRecordId(), dto.name.trim(), dto.email.trim().toLowerCase(), dto.role],
+    )).rows[0]);
+    return toUserResponse(row);
   }
 
   async update(id: string, dto: UpdateUserDto): Promise<UserResponse> {
-    try {
-      if (Types.ObjectId.isValid(id)) {
-        const updated = await this.userModel
-          .findByIdAndUpdate(id, { $set: dto }, { new: true })
-          .lean();
-        if (updated) return toUserResponse(updated);
-      }
-    } catch {
-      if (process.env.SAVE_DEMO_MODE !== 'true')
-        throw new ServiceUnavailableException(
-          'Database unavailable. Please retry.',
-        );
-      // Fallback
-    }
-
-    const index = DEMO_USERS.findIndex((u) => u.id === id);
-    if (index !== -1) {
-      DEMO_USERS[index] = { ...DEMO_USERS[index], ...dto };
-      return DEMO_USERS[index];
-    }
-
-    throw new NotFoundException(`User with id ${id} not found`);
+    if (!/^[a-f0-9]{24}$/i.test(id)) throw new NotFoundException(`User with id ${id} not found`);
+    const row = await this.db(async () => (await this.database.query(
+      'update public.user_profiles set name = coalesce($2, name), email = coalesce($3, email), role = coalesce($4, role), updated_at = now() where legacy_id = $1 returning legacy_id, name, email, role, created_at',
+      [id, dto.name?.trim() ?? null, dto.email?.trim().toLowerCase() ?? null, dto.role ?? null],
+    )).rows[0]);
+    if (!row) throw new NotFoundException(`User with id ${id} not found`);
+    return toUserResponse(row);
   }
 
   async remove(id: string): Promise<{ deleted: boolean }> {
-    try {
-      if (Types.ObjectId.isValid(id)) {
-        const deleted = await this.userModel.findByIdAndDelete(id).lean();
-        if (deleted) return { deleted: true };
-      }
-    } catch {
-      if (process.env.SAVE_DEMO_MODE !== 'true')
-        throw new ServiceUnavailableException(
-          'Database unavailable. Please retry.',
-        );
-      // Fallback
-    }
-
-    const index = DEMO_USERS.findIndex((u) => u.id === id);
-    if (index !== -1) {
-      DEMO_USERS.splice(index, 1);
-      return { deleted: true };
-    }
-
-    throw new NotFoundException(`User with id ${id} not found`);
+    if (!/^[a-f0-9]{24}$/i.test(id)) throw new NotFoundException(`User with id ${id} not found`);
+    const row = await this.db(async () => (await this.database.query(
+      'delete from public.user_profiles where legacy_id = $1 returning legacy_id',
+      [id],
+    )).rows[0]);
+    if (!row) throw new NotFoundException(`User with id ${id} not found`);
+    return { deleted: true };
   }
 }

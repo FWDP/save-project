@@ -62,30 +62,31 @@ test('identity comes from verified provider response, never caller body', async 
   }
 });
 test('list reads are owner scoped and empty database stays empty', async () => {
-  const model = {
-    find: (filter) => {
-      assert.deepEqual(filter, { userId: 'alice' });
-      return { sort: () => ({ lean: async () => [] }) };
+  const database = {
+    query: async (sql, values) => {
+      assert.match(sql, /from public\.transactions where user_id = \$1/);
+      assert.deepEqual(values, ['alice']);
+      return { rows: [] };
     },
   };
   await authContext.run({ userId: 'alice' }, async () =>
-    assert.deepEqual(await new TransactionsService(model).findAll(), []),
+    assert.deepEqual(await new TransactionsService(database).findAll(), []),
   );
 });
 test('cross-account mutation cannot update another owner and ownership cannot be reassigned', async () => {
-  const model = {
-    findOneAndUpdate: (filter, update) => {
-      assert.deepEqual(filter, {
-        _id: '507f1f77bcf86cd799439011',
-        userId: 'alice',
-      });
-      assert.equal(update.$set.userId, 'alice');
-      return { lean: async () => null };
+  const database = {
+    query: async (sql, values) => {
+      assert.match(sql, /^update public\.transactions/);
+      assert.match(sql, /where id = \$1 and user_id = \$2/);
+      assert.equal(values[0], '507f1f77bcf86cd799439011');
+      assert.equal(values[1], 'alice');
+      assert.equal(values.includes('bob'), false);
+      return { rows: [] };
     },
   };
   await authContext.run({ userId: 'alice' }, async () =>
     assert.rejects(
-      new TransactionsService(model).update('507f1f77bcf86cd799439011', {
+      new TransactionsService(database).update('507f1f77bcf86cd799439011', {
         userId: 'bob',
         amount: 1,
       }),
@@ -94,34 +95,38 @@ test('cross-account mutation cannot update another owner and ownership cannot be
   );
 });
 test('database failure is an error, never volatile success or demo data', async () => {
-  const model = {
-    find: () => ({
-      sort: () => ({
-        lean: async () => {
-          throw new Error('offline');
-        },
-      }),
-    }),
+  const database = {
+    query: async () => {
+      throw new Error('offline');
+    },
   };
   await authContext.run({ userId: 'alice' }, async () =>
-    assert.rejects(new TransactionsService(model).findAll(), { status: 503 }),
+    assert.rejects(new TransactionsService(database).findAll(), { status: 503 }),
   );
 });
 test('retried creates use the same owner-scoped idempotent upsert', async () => {
-  let stored;
-  const model = {
-    findOneAndUpdate: (filter, update, options) => {
-      assert.deepEqual(filter, {
-        userId: 'alice',
-        clientMutationId: 'retry-1',
-      });
-      assert.equal(options.upsert, true);
-      stored ??= { ...update.$setOnInsert, _id: 'same-id' };
-      return { lean: async () => stored };
+  const stored = {
+    id: '507f1f77bcf86cd799439011',
+    user_id: 'alice',
+    client_mutation_id: 'retry-1',
+    type: 'expense',
+    amount: '1.00',
+    category: 'Food',
+    description: 'Lunch',
+    date: '2026-09-12',
+    status: 'pending',
+    revision: 1,
+  };
+  const database = {
+    query: async (sql, values) => {
+      assert.match(sql, /on conflict \(user_id, client_mutation_id\)/);
+      assert.equal(values[1], 'alice');
+      assert.equal(values[2], 'retry-1');
+      return { rows: [stored] };
     },
   };
   await authContext.run({ userId: 'alice' }, async () => {
-    const service = new TransactionsService(model);
+    const service = new TransactionsService(database);
     const a = await service.create({
       userId: 'forged',
       clientMutationId: 'retry-1',
@@ -138,22 +143,23 @@ test('retried creates use the same owner-scoped idempotent upsert', async () => 
 });
 test('Web revision checks reject stale writes without breaking legacy updates', async () => {
   const id = '507f1f77bcf86cd799439011';
-  const model = {
-    findOneAndUpdate: (filter, update) => {
-      assert.equal(filter._id, id);
-      assert.equal(filter.userId, 'alice');
-      assert.deepEqual(filter.$or, [{ revision: 1 }, { revision: { $exists: false } }]);
-      assert.deepEqual(update.$inc, { revision: 1 });
-      return { lean: async () => null };
-    },
-    findOne: (filter) => {
-      assert.deepEqual(filter, { _id: id, userId: 'alice' });
-      return { lean: async () => ({ _id: id, revision: 2 }) };
+  const database = {
+    query: async (sql, values) => {
+      assert.equal(values[0], id);
+      assert.equal(values[1], 'alice');
+      if (sql.startsWith('update')) {
+        assert.match(sql, /revision = revision \+ 1/);
+        assert.match(sql, /revision = \$3/);
+        assert.equal(values[2], 1);
+        return { rows: [] };
+      }
+      assert.match(sql, /select id from public\.transactions/);
+      return { rows: [{ id, revision: 2 }] };
     },
   };
   await authContext.run({ userId: 'alice' }, async () => {
     await assert.rejects(
-      new TransactionsService(model).update(id, {
+      new TransactionsService(database).update(id, {
         revision: 1,
         amount: 25,
       }),

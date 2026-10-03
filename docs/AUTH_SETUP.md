@@ -1,6 +1,6 @@
 # SAVE authentication setup
 
-The app now uses Supabase Auth for email/password, Google, and email magic links. MongoDB remains the financial-record database; Supabase is used for identity only. Provider configuration is not included in the repository and has not been performed by this change.
+The app uses Supabase Auth for email/password, Google, and email magic links. The NestJS API stores application data in Supabase Postgres and verifies every bearer token with the same Auth project.
 
 ## Enable SAVE Web locally
 
@@ -13,7 +13,7 @@ The root `.env` belongs to Expo. Next.js reads `web/.env.local`; the API reads `
 5. In Supabase Authentication → Sign In / Providers → Google, enable Google and enter the Google client ID and client secret. Keep that secret in the provider dashboard; SAVE does not need it in its environment files.
 6. Enable Email in Supabase. Leave the default `{{ .ConfirmationURL }}` links in confirmation, magic-link and recovery templates for the implemented PKCE callback flow. Open these links in the browser that requested them. Configure SMTP for production email delivery.
 7. Run `npm run auth:check`. It checks configuration consistency and the public provider settings endpoint without printing keys or sending email. Then start the API with `npm --prefix backend run start:dev` and Web with `npm run web:dev`.
-8. Open `http://localhost:3002/sign-in`, click Google, approve consent and return to workspace creation. Also verify registration/confirmation, email/password, email link, password reset and sign-out. A reachable MongoDB database is required for workspaces after successful sign-in.
+8. Open `http://localhost:3002/sign-in`, click Google, approve consent and return to workspace creation. Also verify registration/confirmation, email/password, email link, password reset and sign-out. A reachable Supabase Postgres database is required for records after successful sign-in.
 
 Common errors: `redirect_uri_mismatch` means Google's redirect URI must match the Supabase callback exactly; “provider is not enabled” requires enabling Google in Supabase; an expired SAVE callback needs a fresh sign-in attempt in the original browser. Avoid switching between `localhost` and `127.0.0.1` during PKCE sign-in because their cookies differ.
 
@@ -40,6 +40,7 @@ EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY=your-public-key
 ```dotenv
 SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_PUBLISHABLE_KEY=your-public-key
+SUPABASE_DB_URL=postgresql://postgres.project-ref:database-password@your-session-pooler-host:5432/postgres?sslmode=require
 SAVE_DEMO_MODE=false
 ```
 
@@ -47,8 +48,8 @@ The API verifies bearer tokens with the configured provider's `/auth/v1/user` en
 
 ## Existing data and compatibility
 
-- Legacy `usr_2` demo transactions/budgets and ownerless categories/goals are **not automatically assigned** to a new account. Back up the database before an explicit operator-reviewed ownership migration; otherwise new accounts begin empty.
-- The finance services no longer seed demo data or fall back to volatile memory on database errors. `SAVE_DEMO_MODE` only controls legacy users-service seeding/fallback and should stay false.
+- The one-time Mongo importer maps only records whose owner resolves to a verified Supabase Auth UUID. Unmapped and ownerless records are preserved in the private `mongo_migration_quarantine` table and are not exposed to accounts until an operator verifies ownership.
+- Finance APIs use Supabase Postgres and do not fall back to volatile memory. Demo seeding is disabled by default.
 - Wallet public-ledger reads and verified-signature callbacks remain public. Preparing a request linked to a private savings tracker requires authentication and tracker ownership. A tracker is bound to its wallet address before preparation; ledger reconciliation updates through a wallet-filtered internal method.
 - Public savings CRUD cannot set ledger proof, on-chain funded balance or completion status. Those values come from reconciliation.
 - Native snapshots and pending writes are partitioned by account. Sign-out clears loaded state and snapshots; pending uploads remain partitioned by account to avoid losing an unsent transaction. They resume only for the same verified user. This is persistence, not an encrypted-database implementation.

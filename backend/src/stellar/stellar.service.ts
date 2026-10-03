@@ -1,30 +1,28 @@
 import { BadRequestException, ConflictException, Injectable, OnModuleDestroy, OnModuleInit, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
-import { Buffer } from 'node:buffer';
 import {
-  Address,
-  Asset,
-  BASE_FEE,
-  Contract,
-  Horizon,
-  Keypair,
-  Memo,
-  Networks,
-  Operation,
-  StrKey,
-  TransactionBuilder,
-  nativeToScVal,
-  rpc,
-  scValToNative,
+    Address,
+    Asset,
+    BASE_FEE,
+    Contract,
+    Horizon,
+    Keypair,
+    Memo,
+    Networks,
+    Operation,
+    StrKey,
+    TransactionBuilder,
+    nativeToScVal,
+    rpc,
+    scValToNative,
 } from '@stellar/stellar-sdk';
+import { Buffer } from 'node:buffer';
+import { DatabaseService } from '../database/database.service';
 
-import { LinkStellarAccountDto, PreparePaymentDto, PrepareVaultInvocationDto, StellarEventsQueryDto, SubmitStellarTransactionDto } from './stellar.dto';
-import { assertMatchingSignedTransaction, buildSep7SigningUrl, loadIntegritySigner, transactionHash } from './stellar.sep7';
-import { StellarAccount, StellarAccountDocument, StellarContractEvent, StellarContractEventDocument, StellarSigningRequest, StellarSigningRequestDocument } from './stellar.schema';
 import { SavingsService } from '../savings/savings.service';
 import { assertAllowedVaultAsset } from './stellar.assets';
+import { LinkStellarAccountDto, PreparePaymentDto, PrepareVaultInvocationDto, StellarEventsQueryDto, SubmitStellarTransactionDto } from './stellar.dto';
+import { assertMatchingSignedTransaction, buildSep7SigningUrl, loadIntegritySigner, transactionHash } from './stellar.sep7';
 
 type SigningRequest = {
   idempotencyKey: string;
@@ -73,9 +71,7 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
 
   constructor(
     config: ConfigService,
-    @InjectModel(StellarAccount.name) private readonly accountModel: Model<StellarAccountDocument>,
-    @InjectModel(StellarSigningRequest.name) private readonly signingRequestModel: Model<StellarSigningRequestDocument>,
-    @InjectModel(StellarContractEvent.name) private readonly eventModel: Model<StellarContractEventDocument>,
+    private readonly database: DatabaseService,
     private readonly savingsService: SavingsService,
   ) {
     this.horizonUrl = config.get('STELLAR_HORIZON_URL') ?? 'https://horizon-testnet.stellar.org';
@@ -180,7 +176,12 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
     this.assertAccount(dto.address);
     const portfolio = await this.getPortfolio(dto.address);
     this.linkedAccounts.add(dto.address);
-    void this.accountModel.updateOne({ address: dto.address }, { $set: { network: 'testnet', signingMode: 'watch-only', lastSyncedAt: new Date() } }, { upsert: true }).catch(() => undefined);
+    void this.database.query(
+      `insert into public.stellar_accounts (address, network, signing_mode, last_synced_at)
+       values ($1, 'testnet', 'watch-only', now())
+       on conflict (address) do update set network = excluded.network, signing_mode = excluded.signing_mode, last_synced_at = now(), updated_at = now()`,
+      [dto.address],
+    ).catch(() => undefined);
     return { ...portfolio, linked: true, signingMode: 'external-wallet', secretsStored: false };
   }
 
@@ -387,7 +388,12 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
         : { filters: [{ type: 'contract', contractIds: [contractId] }], startLedger: query.startLedger ?? Math.max((await this.rpc.getLatestLedger()).sequence - 10_000, 1), limit: query.limit ?? 50 };
       const response = await this.rpc.getEvents(request);
       const events = response.events.map((event) => ({ id: event.id, ledger: event.ledger, ledgerClosedAt: event.ledgerClosedAt, txHash: event.txHash, contractId: event.contractId?.toString() ?? contractId, topics: event.topic.map((topic) => jsonSafe(scValToNative(topic))), value: jsonSafe(scValToNative(event.value)), successful: event.inSuccessfulContractCall }));
-      if (events.length) void this.eventModel.bulkWrite(events.map((event) => ({ updateOne: { filter: { eventId: event.id }, update: { $set: { eventId: event.id, contractId: event.contractId, ledger: event.ledger, transactionHash: event.txHash, ledgerClosedAt: event.ledgerClosedAt, topics: event.topics, value: event.value, successful: event.successful } }, upsert: true } }))).catch(() => undefined);
+      if (events.length) void Promise.all(events.map(event => this.database.query(
+        `insert into public.stellar_contract_events (event_id, contract_id, ledger, transaction_hash, ledger_closed_at, topics, value, successful)
+         values ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb, $8)
+         on conflict (event_id) do update set contract_id = excluded.contract_id, ledger = excluded.ledger, transaction_hash = excluded.transaction_hash, ledger_closed_at = excluded.ledger_closed_at, topics = excluded.topics, value = excluded.value, successful = excluded.successful, updated_at = now()`,
+        [event.id, event.contractId, event.ledger, event.txHash, event.ledgerClosedAt ?? null, JSON.stringify(event.topics), JSON.stringify(event.value ?? null), event.successful],
+      ))).catch(() => undefined);
       return { cursor: response.cursor, events };
     } catch (error) {
       throw new ServiceUnavailableException(`Unable to fetch vault events: ${error instanceof Error ? error.message : 'RPC error'}`);
@@ -430,7 +436,12 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
       createdAt: new Date().toISOString(),
     };
     this.signingRequests.set(idempotencyKey, request);
-    await this.signingRequestModel.updateOne({ idempotencyKey }, { $set: request }, { upsert: true });
+    await this.database.query(
+      `insert into public.stellar_signing_requests (idempotency_key, kind, action, source, unsigned_xdr, status, hash, fee, savings_goal_id, goal_id, error, created_at)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+       on conflict (idempotency_key) do update set kind = excluded.kind, action = excluded.action, source = excluded.source, unsigned_xdr = excluded.unsigned_xdr, status = excluded.status, hash = excluded.hash, fee = excluded.fee, savings_goal_id = excluded.savings_goal_id, goal_id = excluded.goal_id, error = excluded.error, updated_at = now()`,
+      [request.idempotencyKey, request.kind, request.action, request.source, request.unsignedXdr, request.status, request.hash, request.fee ?? null, request.savingsGoalId ?? null, request.goalId ?? null, request.error ?? null, request.createdAt],
+    );
     return this.presentSigningRequest(request);
   }
 
@@ -458,21 +469,24 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
   private async findSigningRequest(idempotencyKey: string): Promise<SigningRequest | undefined> {
     const cached = this.signingRequests.get(idempotencyKey);
     if (cached) return cached;
-    const persisted = await this.signingRequestModel.findOne({ idempotencyKey }).lean().exec();
+    const persisted = (await this.database.query(
+      'select * from public.stellar_signing_requests where idempotency_key = $1',
+      [idempotencyKey],
+    )).rows[0];
     if (!persisted?.hash || !persisted.source) return undefined;
     const request: SigningRequest = {
-      idempotencyKey: persisted.idempotencyKey,
+      idempotencyKey: persisted.idempotency_key,
       kind: persisted.kind as SigningRequest['kind'],
       action: persisted.action,
       source: persisted.source,
-      unsignedXdr: persisted.unsignedXdr,
+      unsignedXdr: persisted.unsigned_xdr,
       status: persisted.status as SigningRequest['status'],
       hash: persisted.hash,
       fee: persisted.fee,
-      savingsGoalId: persisted.savingsGoalId,
-      goalId: persisted.goalId,
+      savingsGoalId: persisted.savings_goal_id,
+      goalId: persisted.goal_id,
       error: persisted.error,
-      createdAt: ((persisted as unknown as { createdAt?: Date }).createdAt ?? new Date()).toISOString(),
+      createdAt: (persisted.created_at instanceof Date ? persisted.created_at : new Date(persisted.created_at)).toISOString(),
     };
     this.signingRequests.set(idempotencyKey, request);
     return request;
@@ -555,9 +569,9 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async persistRequestUpdate(idempotencyKey: string, status: SigningRequest['status'], hash: string, error?: string, goalId?: string) {
-    await this.signingRequestModel.updateOne(
-      { idempotencyKey },
-      { $set: { status, hash, error: error ?? null, ...(goalId ? { goalId } : {}) } },
+    await this.database.query(
+      'update public.stellar_signing_requests set status = $2, hash = $3, error = $4, goal_id = coalesce($5, goal_id), updated_at = now() where idempotency_key = $1',
+      [idempotencyKey, status, hash, error ?? null, goalId ?? null],
     ).catch(() => undefined);
   }
 }

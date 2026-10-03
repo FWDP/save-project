@@ -1,5 +1,5 @@
-import { existsSync, readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
+import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 const TESTNET_PASSPHRASE = 'Test SDF Network ; September 2015';
@@ -42,6 +42,15 @@ function checkUrl(values, key, source, { allowBlank = false } = {}) {
   }
 }
 
+function checkPostgresUrl(values, key, source) {
+  try {
+    const url = new URL(values[key]);
+    if (!['postgres:', 'postgresql:'].includes(url.protocol)) throw new Error('unsupported protocol');
+  } catch {
+    failures.push(`${source}: ${key} must be a PostgreSQL connection URL`);
+  }
+}
+
 function commandVersion(command, commandArgs, pattern, label) {
   try {
     const value = execFileSync(command, commandArgs, { encoding: 'utf8' }).trim();
@@ -65,12 +74,14 @@ if (!failures.length) {
   const mobile = parseEnv(rootPath);
   const backend = parseEnv(backendPath);
   const admin = parseEnv(adminPath);
+  backend.SUPABASE_DB_URL ||= mobile.SUPABASE_DB_URL;
 
   checkUrl(mobile, 'EXPO_PUBLIC_API_URL', rootPath, { allowBlank: examplesOnly });
   if (!examplesOnly) requireValue(mobile, 'EXPO_PUBLIC_WALLETCONNECT_PROJECT_ID', rootPath);
   checkUrl(admin, 'SAVE_API_URL', adminPath);
 
-  requireValue(backend, 'MONGODB_URI', backendPath);
+  requireValue(backend, 'SUPABASE_DB_URL', backendPath);
+  checkPostgresUrl(backend, 'SUPABASE_DB_URL', backendPath);
   requireValue(backend, 'REDIS_URI', backendPath);
   checkUrl(backend, 'STELLAR_HORIZON_URL', backendPath);
   checkUrl(backend, 'STELLAR_RPC_URL', backendPath);

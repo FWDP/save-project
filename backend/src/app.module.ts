@@ -1,34 +1,24 @@
-import { WorkspacesModule } from './workspaces/workspaces.module';
 import { Module } from '@nestjs/common';
-import { ConfigModule, ConfigService } from '@nestjs/config';
-import { MongooseModule } from '@nestjs/mongoose';
+import { ConfigModule } from '@nestjs/config';
+import { WorkspacesModule } from './workspaces/workspaces.module';
 
 import { BudgetsModule } from './budgets/budgets.module';
 import { CategoriesModule } from './categories/categories.module';
-import { TransactionsModule } from './transactions/transactions.module';
-import { UsersModule } from './users/users.module';
+import { DatabaseModule } from './database/database.module';
+import { HealthController } from './health.controller';
+import { ReceiptsModule } from './receipts/receipts.module';
 import { SavingsModule } from './savings/savings.module';
 import { StellarModule } from './stellar/stellar.module';
-import { ReceiptsModule } from './receipts/receipts.module';
-import { HealthController } from './health.controller';
+import { TransactionsModule } from './transactions/transactions.module';
+import { UsersModule } from './users/users.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      envFilePath: '.env',
+      envFilePath: ['.env', '../.env'],
     }),
-    MongooseModule.forRootAsync({
-      imports: [ConfigModule],
-      useFactory: (config: ConfigService) => ({
-        uri: config.get<string>('MONGODB_URI', 'mongodb://localhost:27017/save'),
-        // Stellar routes do not depend on MongoDB. Start the API even when the
-        // local database is temporarily offline so network and vault health
-        // checks remain available.
-        lazyConnection: true,
-      }),
-      inject: [ConfigService],
-    }),
+    DatabaseModule,
     WorkspacesModule,
     UsersModule,
     TransactionsModule,

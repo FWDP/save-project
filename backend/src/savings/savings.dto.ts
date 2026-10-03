@@ -1,14 +1,14 @@
 import {
-  IsEnum,
-  IsNotEmpty,
-  IsNumber,
-  IsOptional,
-  IsPositive,
-  IsString,
-  Matches,
-  Min,
+    IsEnum,
+    IsNotEmpty,
+    IsNumber,
+    IsOptional,
+    IsPositive,
+    IsString,
+    Matches,
+    Min,
 } from 'class-validator';
-import { SavingsGoalStatus } from './savings-goal.schema';
+import { SavingsGoalStatus } from './savings.types';
 
 export class CreateSavingsGoalDto {
   @IsString()

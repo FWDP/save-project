@@ -67,7 +67,7 @@ The goal is to create a **Soroban smart contract** that manages savings‑goal v
 |------|-------------|-------|----------------------|
 | 5.1 | Define events: `GoalCreated`, `Contribution`, `GoalCompleted`, `Withdrawal`, `GoalCancelled`. |
 | 5.2 | Emit events via `env::emit_event` in each entry point. |
-| 5.3 | Add a small off‑chain listener (Node/TS) that subscribes to Horizon testnet streaming and persists events to MongoDB. |
+| 5.3 | Add a small off‑chain listener (Node/TS) that polls Stellar RPC and persists events to Supabase Postgres. |
 | 5.4 | Backend API fetches goal state via RPC and merges with off‑chain receipt data. |
 | Owner | Full‑stack Engineer |
 | Acceptance | Events appear in Horizon stream; backend can query on‑chain state and combine with DB models. |
@@ -146,7 +146,7 @@ This document catalogs the meaningful Stellar and Soroban integrations that fit 
 - Transaction, category, budget features
 - Offline SQLite caching and Zustand state
 - SecureStore, local authentication, linking, web‑browser capabilities
-- Planned MongoDB, Redis/BullMQ, object storage
+- Supabase Postgres, Redis/BullMQ, object storage
 
 ### Recommended product direction
 | Priority | Integration | Why it fits SAVE |

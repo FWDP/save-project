@@ -30,7 +30,7 @@ Implemented in this working tree on 2026-09-23. This is a substantial applicatio
 - Expo browser static export, including all 24 routes.
 - `git diff --check`.
 
-Tests for service behavior use controlled model/provider doubles. They do not replace integration tests against a real MongoDB instance and configured hosted authentication provider.
+Tests for service behavior use controlled database/provider doubles. They do not replace integration tests against Supabase Postgres and a configured hosted authentication provider.
 
 ## Remaining qualification and next work
 

@@ -30,7 +30,7 @@ The API treats addresses, callbacks, XDR, RPC data, and wallet responses as untr
 - `StellarAccount`: linked public address and last sync time.
 - `StellarSigningRequest`: idempotency key, unsigned XDR, action, status, and transaction hash.
 - `StellarContractEvent`: unique RPC event ID, contract, ledger, transaction hash, topics, and value.
-- Event polling uses the RPC cursor and idempotent MongoDB upserts. It is disabled until a valid vault contract ID is configured.
+- Event polling uses the RPC cursor and idempotent Supabase Postgres upserts. It is disabled until a valid vault contract ID is configured.
 
 ## Deliberate non-goals for this release
 

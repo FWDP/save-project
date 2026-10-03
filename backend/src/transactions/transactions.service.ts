@@ -1,15 +1,14 @@
-import { currentOwner } from '../auth/auth-context';
 import {
-  ConflictException,
-  Injectable,
-  NotFoundException,
-  ServiceUnavailableException,
+    ConflictException,
+    HttpException,
+    Injectable,
+    NotFoundException,
+    ServiceUnavailableException,
 } from '@nestjs/common';
-import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
+import { currentOwner } from '../auth/auth-context';
+import { DatabaseQueryError, DatabaseService, newRecordId } from '../database/database.service';
 
 import { CreateTransactionDto, UpdateTransactionDto } from './transactions.dto';
-import { Transaction, TransactionDocument } from './transaction.schema';
 
 export type TransactionResponse = {
   clientMutationId?: string;
@@ -31,11 +30,11 @@ export type TransactionResponse = {
 
 function toTransactionResponse(doc: any): TransactionResponse {
   return {
-    id: doc._id?.toString() ?? doc.id,
-    userId: doc.userId,
+    id: doc.id,
+    userId: doc.user_id,
     clientMutationId: doc.clientMutationId,
     type: doc.type,
-    amount: doc.amount,
+    amount: Number(doc.amount),
     category: doc.category,
     description: doc.description,
     date: doc.date,
@@ -51,18 +50,16 @@ function toTransactionResponse(doc: any): TransactionResponse {
 
 @Injectable()
 export class TransactionsService {
-  constructor(
-    @InjectModel(Transaction.name)
-    private readonly model: Model<TransactionDocument>,
-  ) {}
+  constructor(private readonly database: DatabaseService) {}
   private async db<T>(operation: () => PromiseLike<T>): Promise<T> {
     try {
       return await operation();
     } catch (error) {
-      if ((error as { code?: number }).code === 11000)
+      if (error instanceof DatabaseQueryError && error.code === '23505')
         throw new ConflictException(
           "This transaction already exists. Refresh and retry.",
         );
+      if (error instanceof HttpException) throw error;
       throw new ServiceUnavailableException(
         'Database unavailable. Please retry.',
       );
@@ -71,72 +68,60 @@ export class TransactionsService {
   async findAll(): Promise<TransactionResponse[]> {
     const userId = currentOwner();
     return (
-      await this.db(() =>
-        this.model.find({ userId }).sort({ createdAt: -1 }).lean(),
-      )
+      await this.db(() => this.database.query(
+        'select * from public.transactions where user_id = $1 order by created_at desc',
+        [userId],
+      ).then(result => result.rows))
     ).map(toTransactionResponse);
   }
   async findOne(id: string): Promise<TransactionResponse> {
     const userId = currentOwner();
-    if (!Types.ObjectId.isValid(id)) throw new NotFoundException();
-    const row = await this.db(() =>
-      this.model.findOne({ _id: id, userId }).lean(),
-    );
+    if (!/^[a-f0-9]{24}$/i.test(id)) throw new NotFoundException();
+    const row = await this.db(() => this.database.query(
+      'select * from public.transactions where id = $1 and user_id = $2',
+      [id, userId],
+    ).then(result => result.rows[0]));
     if (!row) throw new NotFoundException();
     return toTransactionResponse(row);
   }
   async create(dto: CreateTransactionDto): Promise<TransactionResponse> {
     const userId = currentOwner();
     if (dto.clientMutationId) {
-      const row = await this.db(() =>
-        this.model
-          .findOneAndUpdate(
-            { userId, clientMutationId: dto.clientMutationId },
-            { $setOnInsert: { ...dto, userId } },
-            { upsert: true, new: true, runValidators: true },
-          )
-          .lean(),
-      );
+      const row = await this.db(() => this.database.query(
+        `insert into public.transactions (id, user_id, client_mutation_id, type, amount, category, description, date, revision, status, merchant, tags, recurring, receipt_uri, custom_fields)
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+         on conflict (user_id, client_mutation_id) where client_mutation_id is not null
+         do update set client_mutation_id = excluded.client_mutation_id
+         returning *`,
+        [newRecordId(), userId, dto.clientMutationId, dto.type, dto.amount, dto.category, dto.description, dto.date, 1, dto.status ?? 'pending', dto.merchant ?? null, dto.tags ?? [], dto.recurring ?? false, dto.receiptUri ?? null, dto.customFields ?? null],
+      ).then(result => result.rows[0]));
       return toTransactionResponse(row);
     }
-    const row = await this.db(() => new this.model({ ...dto, userId }).save());
-    return toTransactionResponse(row.toObject());
+    const row = await this.db(() => this.database.query(
+      `insert into public.transactions (id, user_id, type, amount, category, description, date, revision, status, merchant, tags, recurring, receipt_uri, custom_fields)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) returning *`,
+      [newRecordId(), userId, dto.type, dto.amount, dto.category, dto.description, dto.date, 1, dto.status ?? 'pending', dto.merchant ?? null, dto.tags ?? [], dto.recurring ?? false, dto.receiptUri ?? null, dto.customFields ?? null],
+    ).then(result => result.rows[0]));
+    return toTransactionResponse(row);
   }
   async update(
     id: string,
     dto: UpdateTransactionDto,
   ): Promise<TransactionResponse> {
     const userId = currentOwner();
-    if (!Types.ObjectId.isValid(id)) throw new NotFoundException();
+    if (!/^[a-f0-9]{24}$/i.test(id)) throw new NotFoundException();
     const { revision, userId: _userId, ...fields } = dto;
-    const row = await this.db(() =>
-      this.model
-        .findOneAndUpdate(
-          {
-            _id: id,
-            userId,
-            ...(revision === undefined
-              ? {}
-              : {
-                  $or: [
-                    { revision },
-                    ...(revision === 1 ? [{ revision: { $exists: false } }] : []),
-                  ],
-                }),
-          },
-          {
-            $set: { ...fields, userId },
-            $inc: { revision: 1 },
-          },
-          { new: true, runValidators: true },
-        )
-        .lean(),
-    );
+    const row = await this.db(() => this.database.query(
+      `update public.transactions set type = coalesce($4, type), amount = coalesce($5, amount), category = coalesce($6, category), description = coalesce($7, description), date = coalesce($8, date), status = coalesce($9, status), merchant = coalesce($10, merchant), tags = coalesce($11, tags), recurring = coalesce($12, recurring), receipt_uri = coalesce($13, receipt_uri), custom_fields = coalesce($14, custom_fields), revision = revision + 1, updated_at = now()
+       where id = $1 and user_id = $2 and ($3::integer is null or revision = $3 or ($3 = 1 and revision is null)) returning *`,
+      [id, userId, revision ?? null, fields.type ?? null, fields.amount ?? null, fields.category ?? null, fields.description ?? null, fields.date ?? null, fields.status ?? null, fields.merchant ?? null, fields.tags ?? null, fields.recurring ?? null, fields.receiptUri ?? null, fields.customFields ?? null],
+    ).then(result => result.rows[0]));
     if (!row) {
       if (revision !== undefined) {
-        const existing = await this.db(() =>
-          this.model.findOne({ _id: id, userId }).lean(),
-        );
+        const existing = await this.db(() => this.database.query(
+          'select id from public.transactions where id = $1 and user_id = $2',
+          [id, userId],
+        ).then(result => result.rows[0]));
         if (existing)
           throw new ConflictException(
             'This record changed. Reload before editing.',
@@ -151,28 +136,17 @@ export class TransactionsService {
     revision?: number,
   ): Promise<{ deleted: boolean }> {
     const userId = currentOwner();
-    if (!Types.ObjectId.isValid(id)) throw new NotFoundException();
-    const row = await this.db(() =>
-      this.model
-        .findOneAndDelete({
-          _id: id,
-          userId,
-          ...(revision === undefined
-            ? {}
-            : {
-                $or: [
-                  { revision },
-                  ...(revision === 1 ? [{ revision: { $exists: false } }] : []),
-                ],
-              }),
-        })
-        .lean(),
-    );
+    if (!/^[a-f0-9]{24}$/i.test(id)) throw new NotFoundException();
+    const row = await this.db(() => this.database.query(
+      'delete from public.transactions where id = $1 and user_id = $2 and ($3::integer is null or revision = $3) returning id',
+      [id, userId, revision ?? null],
+    ).then(result => result.rows[0]));
     if (!row) {
       if (revision !== undefined) {
-        const existing = await this.db(() =>
-          this.model.findOne({ _id: id, userId }).lean(),
-        );
+        const existing = await this.db(() => this.database.query(
+          'select id from public.transactions where id = $1 and user_id = $2',
+          [id, userId],
+        ).then(result => result.rows[0]));
         if (existing)
           throw new ConflictException(
             'This record changed. Reload before deleting.',
@@ -198,36 +172,27 @@ export class TransactionsService {
     if (transaction.createdBy !== userId)
       throw new NotFoundException('Personal transaction not found.');
     if (
-      !Types.ObjectId.isValid(transaction.id) ||
+      !/^[a-f0-9]{24}$/i.test(transaction.id) ||
       !Number.isSafeInteger(transaction.amountMinor) ||
       transaction.amountMinor < 1
     )
       throw new ConflictException(
         'A personal Web transaction cannot be safely shared with Mobile.',
       );
-    const row = await this.db(() =>
-      this.model
-        .findOneAndUpdate(
-          { userId, clientMutationId: transaction.clientMutationId },
-          {
-            $setOnInsert: {
-              _id: new Types.ObjectId(transaction.id),
-              userId,
-              clientMutationId: transaction.clientMutationId,
-              type: transaction.type,
-              amount: transaction.amountMinor / 100,
-              description: transaction.description,
-              category: transaction.category,
-              merchant: transaction.merchant,
-              date: transaction.date,
-              revision: 1,
-            },
-          },
-          { upsert: true, new: true, runValidators: true },
-        )
-        .lean(),
-    );
-    if (!row || String(row._id) !== transaction.id)
+    const row = await this.db(async () => {
+      const inserted = await this.database.query(
+        `insert into public.transactions (id, user_id, client_mutation_id, type, amount, category, description, date, revision, status, merchant)
+         values ($1, $2, $3, $4, $5, $6, $7, $8, 1, 'pending', $9)
+         on conflict (user_id, client_mutation_id) where client_mutation_id is not null do nothing returning id`,
+        [transaction.id, userId, transaction.clientMutationId, transaction.type, transaction.amountMinor / 100, transaction.category, transaction.description, transaction.date, transaction.merchant],
+      );
+      if (inserted.rows[0]) return inserted.rows[0];
+      return (await this.database.query(
+        'select id from public.transactions where user_id = $1 and client_mutation_id = $2',
+        [userId, transaction.clientMutationId],
+      )).rows[0];
+    });
+    if (!row || String(row.id) !== transaction.id)
       throw new ConflictException(
         'A personal Web transaction conflicts with an existing sync record.',
       );

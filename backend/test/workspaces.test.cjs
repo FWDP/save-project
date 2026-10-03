@@ -1,6 +1,5 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { Types } = require("mongoose");
 const { WorkspacesService } = require("../dist/workspaces/workspaces.service");
 const {
   assertWrite,
@@ -13,27 +12,42 @@ const { AuthGuard } = require("../dist/auth/auth.guard");
 const workspaceId = "507f1f77bcf86cd799439011";
 const recordId = "507f191e810c19729de860ea";
 const actor = (id, fn) => authContext.run({ userId: id }, fn);
-function workspaceModel(role = "owner", kind = "business", currency = "PHP") {
+
+function workspace(id = workspaceId, role = "owner", kind = "business", currency = "PHP") {
   return {
-    findOne(filter) {
-      assert.equal(filter._id, workspaceId);
-      assert.deepEqual(filter.members, {
-        $elemMatch: { userId: "alice", status: "active" },
-      });
-      return {
-        lean: async () => ({
-          _id: new Types.ObjectId(workspaceId),
-          name: "Personal",
-          ownerId: "alice",
-          kind,
-          currency,
-          timezone: "Asia/Manila",
-          members: [{ userId: "alice", status: "active", role }],
-        }),
-      };
+    id,
+    name: "Workspace",
+    kind,
+    owner_id: "alice",
+    client_mutation_id: "workspace-key",
+    currency,
+    timezone: "Asia/Manila",
+    role,
+    member_count: 1,
+    members: { alice: { role, status: "active" } },
+  };
+}
+
+function database({ workspaces = [workspace()], query = async () => ({ rows: [] }), transaction } = {}) {
+  return {
+    async query(sql, values = []) {
+      if (sql.includes("from public.workspaces w")) {
+        if (sql.includes("where w.id = $1")) {
+          const row = workspaces.find(item => item.id === values[0]);
+          const member = row?.members?.[values[1]];
+          return { rows: member?.status === "active" ? [{ ...row, role: member.role }] : [] };
+        }
+        return { rows: workspaces.filter(item => item.members?.[values[0]]?.status === "active").map(item => ({ ...item, role: item.members[values[0]].role })) };
+      }
+      return query(sql, values);
+    },
+    async transaction(operation) {
+      if (transaction) return transaction(operation);
+      throw new Error("Unexpected transaction");
     },
   };
 }
+
 function personalTransactionService(overrides = {}) {
   return {
     findAll: async () => [],
@@ -45,6 +59,11 @@ function personalTransactionService(overrides = {}) {
     ...overrides,
   };
 }
+
+function service(db = database(), personal = personalTransactionService()) {
+  return new WorkspacesService(db, personal);
+}
+
 test("workspace endpoints cannot be accessed without a verified bearer token", async () => {
   for (const path of ["/workspaces", `/workspaces/${workspaceId}/transactions`])
     await assert.rejects(
@@ -54,6 +73,7 @@ test("workspace endpoints cannot be accessed without a verified bearer token", a
       { status: 401 },
     );
 });
+
 test("role matrix restricts writes and member visibility", () => {
   for (const role of ["owner", "admin", "finance", "member"])
     assert.doesNotThrow(() => assertWrite(role));
@@ -67,260 +87,167 @@ test("role matrix restricts writes and member visibility", () => {
       workspaceId: "business",
     });
 });
+
 test("workspace access checks active membership, not caller-supplied ownership", async () => {
-  await actor("alice", async () =>
-    assert.equal(
-      (
-        await new WorkspacesService(
-          workspaceModel(),
-          {},
-          personalTransactionService(),
-        ).get(workspaceId)
-      ).role,
-      "owner",
-    ),
-  );
-  await actor("bob", async () =>
-    assert.rejects(
-      new WorkspacesService(
-        {
-          findOne: (filter) => {
-            assert.deepEqual(filter.members, {
-              $elemMatch: { userId: "bob", status: "active" },
-            });
-            return { lean: async () => null };
-          },
-        },
-        {},
-        personalTransactionService(),
-      ).get(workspaceId),
-      { status: 404 },
-    ),
-  );
+  await actor("alice", async () => assert.equal((await service().get(workspaceId)).role, "owner"));
+  await actor("bob", async () => assert.rejects(service().get(workspaceId), { status: 404 }));
 });
+
 test("personal workspace creation is an idempotent owner-scoped upsert with fixed initial membership", async () => {
-  const model = {
-    findOneAndUpdate(filter, update, options) {
-      assert.deepEqual(filter, { ownerId: "alice", kind: "personal" });
-      assert.equal(options.upsert, true);
-      assert.deepEqual(update.$setOnInsert.members, [
-        { userId: "alice", role: "owner", status: "active" },
-      ]);
-      assert.equal(update.$setOnInsert.ownerId, "alice");
-      return {
-        lean: async () => ({
-          ...update.$setOnInsert,
-          _id: new Types.ObjectId(workspaceId),
-        }),
-      };
-    },
-  };
-  await actor("alice", () =>
-    new WorkspacesService(model, {}, personalTransactionService()).create({
-      name: "My finances",
-      kind: "personal",
-      ownerId: "bob",
-      clientMutationId: "request-1",
-      members: [{ userId: "bob", role: "owner" }],
+  let insertedWorkspace;
+  const db = database({
+    workspaces: [workspace(workspaceId, "owner", "personal")],
+    transaction: async operation => operation({
+      query: async (sql, values) => {
+        if (sql.startsWith("insert into public.workspaces")) {
+          assert.match(sql, /on conflict \(owner_id\) where kind = 'personal'/);
+          assert.equal(values[2], "alice");
+          assert.equal(values[3], "request-1");
+          insertedWorkspace = { ...workspace(workspaceId, "owner", "personal"), name: values[1] };
+          return { rows: [] };
+        }
+        if (sql.startsWith("select * from public.workspaces")) return { rows: [insertedWorkspace] };
+        if (sql.startsWith("insert into public.workspace_members")) {
+          assert.deepEqual(values, [workspaceId, "alice"]);
+          return { rows: [] };
+        }
+        throw new Error("Unexpected SQL");
+      },
     }),
-  );
+  });
+  await actor("alice", () => service(db).create({
+    name: "My finances",
+    kind: "personal",
+    ownerId: "bob",
+    clientMutationId: "request-1",
+    members: [{ userId: "bob", role: "owner" }],
+  }));
 });
+
 test("known transaction ID cannot cross workspace or creator visibility boundary", async () => {
-  const model = {
-    findOne(filter) {
-      assert.deepEqual(filter, {
-        _id: recordId,
-        workspaceId,
-        createdBy: "alice",
-      });
-      return { lean: async () => null };
+  const db = database({
+    workspaces: [workspace(workspaceId, "member")],
+    query: async (sql, values) => {
+      assert.match(sql, /from public\.workspace_transactions/);
+      assert.deepEqual(values, [recordId, workspaceId, "alice"]);
+      return { rows: [] };
     },
-  };
-  await actor("alice", () =>
-    assert.rejects(
-      new WorkspacesService(
-        workspaceModel("member"),
-        model,
-        personalTransactionService(),
-      ).getTransaction(
-        workspaceId,
-        recordId,
-      ),
-      { status: 404 },
-    ),
-  );
+  });
+  await actor("alice", () => assert.rejects(service(db).getTransaction(workspaceId, recordId), { status: 404 }));
 });
+
 test("viewer cannot create a record even with a valid workspace ID", async () => {
-  await actor("alice", () =>
-    assert.rejects(
-      new WorkspacesService(
-        workspaceModel("viewer"),
-        {},
-        personalTransactionService(),
-      ).createTransaction(
-        workspaceId,
-        {},
-      ),
-      { status: 403 },
-    ),
-  );
+  await actor("alice", () => assert.rejects(
+    service(database({ workspaces: [workspace(workspaceId, "viewer")] })).createTransaction(workspaceId, {}),
+    { status: 403 },
+  ));
 });
+
 test("concurrent edits and deletes include expected revision and reject stale versions", async () => {
-  const model = {
-    findOneAndUpdate(filter, update) {
-      assert.equal(filter.revision, 3);
-      assert.equal(filter.workspaceId, workspaceId);
-      assert.equal(filter.createdBy, "alice");
-      assert.deepEqual(update.$inc, { revision: 1 });
-      return { lean: async () => null };
+  const db = database({
+    workspaces: [workspace(workspaceId, "member")],
+    query: async (sql, values) => {
+      assert.equal(values[0], recordId);
+      assert.equal(values[1], workspaceId);
+      assert.equal(values[2], 3);
+      if (sql.startsWith("update")) {
+        assert.equal(values.at(-1), "alice");
+        assert.ok(sql.includes("revision = revision + 1"));
+      } else {
+        assert.equal(values[3], "alice");
+        assert.ok(sql.startsWith("delete from public.workspace_transactions"));
+      }
+      return { rows: [] };
     },
-    findOneAndDelete(filter) {
-      assert.equal(filter.revision, 3);
-      assert.equal(filter.workspaceId, workspaceId);
-      return { lean: async () => null };
-    },
-  };
+  });
   await actor("alice", async () => {
-    const service = new WorkspacesService(
-      workspaceModel("member"),
-      model,
-      personalTransactionService(),
-    );
-    await assert.rejects(
-      service.editTransaction(workspaceId, recordId, {
-        revision: 3,
-        clientMutationId: "record-key",
-        date: "2026-09-23",
-        description: "Lunch",
-        category: "Food",
-        amountMinor: 100,
-      }),
-      { status: 409 },
-    );
-    await assert.rejects(service.deleteTransaction(workspaceId, recordId, 3), {
-      status: 409,
-    });
+    const workspaces = service(db);
+    await assert.rejects(workspaces.editTransaction(workspaceId, recordId, {
+      revision: 3,
+      clientMutationId: "record-key",
+      type: "expense",
+      amountMinor: 100,
+      date: "2026-09-23",
+      description: "Lunch",
+      category: "Food",
+    }), { status: 409 });
+    await assert.rejects(workspaces.deleteTransaction(workspaceId, recordId, 3), { status: 409 });
   });
 });
+
 test("aggregate summary and pagination use the same workspace and filter", async () => {
-  let expected;
-  const model = {
-    find(filter) {
-      expected = filter;
-      return {
-        sort: () => ({
-          skip: (skip) => {
-            assert.equal(skip, 25);
-            return { limit: () => ({ lean: async () => [] }) };
-          },
-        }),
-      };
+  const calls = [];
+  const db = database({
+    workspaces: [workspace(workspaceId, "member")],
+    query: async (sql, values) => {
+      calls.push({ sql, values });
+      if (sql.startsWith("select id, workspace_id")) {
+        assert.match(sql, /created_by = \$2/);
+        assert.match(sql, /date >= \$3/);
+        assert.match(sql, /position\(\$5 in lower\(description\)\)/);
+        assert.equal(values[1], "alice");
+        assert.equal(values.at(-2), 25);
+        assert.equal(values.at(-1), 25);
+        return { rows: [] };
+      }
+      if (sql.startsWith("select count(*)")) return { rows: [{ count: 30, income_minor: "10000", expense_minor: "3500" }] };
+      return { rows: [] };
     },
-    aggregate(pipeline) {
-      assert.deepEqual(pipeline[0].$match, expected);
-      return Promise.resolve([
-        {
-          totals: [{ count: 30, incomeMinor: 10000, expenseMinor: 3500 }],
-          categories: [],
-        },
-      ]);
-    },
-  };
+  });
   await actor("alice", async () => {
-    const data = await new WorkspacesService(
-      workspaceModel("member"),
-      model,
-      personalTransactionService(),
-    ).listTransactions(workspaceId, {
+    const data = await service(db).listTransactions(workspaceId, {
       month: "2026-09",
       page: 2,
       search: "coffee.*",
     });
     assert.equal(data.summary.balanceMinor, 6500);
     assert.equal(data.total, 30);
-    assert.equal(expected.workspaceId, workspaceId);
-    assert.equal(expected.createdBy, "alice");
-    assert.equal(expected.$or[0].description.$regex, "coffee\\.\\*");
+    assert.equal(calls.length, 3);
   });
 });
+
 test("personal PHP workspaces migrate old Web records and report the shared Mobile dataset", async () => {
   const migrated = [];
   let marked = false;
   const oldWebRecord = {
-    _id: new Types.ObjectId(recordId),
-    clientMutationId: "web-record-1",
-    createdBy: "alice",
+    id: recordId,
+    workspace_id: workspaceId,
+    created_by: "alice",
+    client_mutation_id: "web-record-1",
     type: "expense",
-    amountMinor: 1250,
+    amount_minor: "1250",
     description: "Coffee shop",
     category: "Food",
     merchant: "Cafe",
     date: "2026-09-12",
+    revision: 1,
   };
-  const workspaceTransactions = {
-    find(filter) {
-      assert.deepEqual(filter, {
-        workspaceId,
-        createdBy: "alice",
-        sharedWithMobile: { $ne: true },
-      });
-      return {
-        sort: () => ({ lean: async () => [oldWebRecord] }),
-      };
+  const db = database({
+    workspaces: [workspace(workspaceId, "owner", "personal")],
+    query: async (sql, values) => {
+      if (sql.startsWith("select id, workspace_id")) {
+        assert.match(sql, /shared_with_mobile = false/);
+        assert.deepEqual(values, [workspaceId, "alice"]);
+        return { rows: [oldWebRecord] };
+      }
+      if (sql.startsWith("update public.workspace_transactions")) {
+        assert.deepEqual(values, [recordId, workspaceId, "alice"]);
+        marked = true;
+        return { rows: [] };
+      }
+      return { rows: [] };
     },
-    updateOne(filter, update) {
-      assert.equal(String(filter._id), recordId);
-      assert.equal(update.$set.sharedWithMobile, true);
-      marked = true;
-      return Promise.resolve({});
-    },
-  };
+  });
   const personal = personalTransactionService({
-    importWorkspaceTransaction: async (record) => migrated.push(record),
+    importWorkspaceTransaction: async row => migrated.push(row),
     findAll: async () => [
-      {
-        id: recordId,
-        userId: "alice",
-        clientMutationId: "web-record-1",
-        type: "expense",
-        amount: 12.5,
-        description: "Coffee shop",
-        category: "Food",
-        merchant: "Cafe",
-        date: "2026-09-12",
-        revision: 1,
-      },
-      {
-        id: "507f1f77bcf86cd799439012",
-        userId: "alice",
-        type: "income",
-        amount: 50,
-        description: "Pay",
-        category: "Income",
-        date: "2026-09-11",
-        revision: 2,
-      },
-      {
-        id: "507f1f77bcf86cd799439013",
-        userId: "alice",
-        type: "expense",
-        amount: 80,
-        description: "Other month",
-        category: "Food",
-        date: "2026-08-12",
-        revision: 1,
-      },
+      { id: recordId, userId: "alice", clientMutationId: "web-record-1", type: "expense", amount: 12.5, description: "Coffee shop", category: "Food", merchant: "Cafe", date: "2026-09-12", revision: 1 },
+      { id: "507f1f77bcf86cd799439012", userId: "alice", type: "income", amount: 50, description: "Pay", category: "Income", date: "2026-09-11", revision: 2 },
+      { id: "507f1f77bcf86cd799439013", userId: "alice", type: "expense", amount: 80, description: "Other month", category: "Food", date: "2026-08-12", revision: 1 },
     ],
   });
   await actor("alice", async () => {
-    const data = await new WorkspacesService(
-      workspaceModel("owner", "personal"),
-      workspaceTransactions,
-      personal,
-    ).listTransactions(workspaceId, {
-      month: "2026-09",
-      search: "coffee",
-    });
+    const data = await service(db, personal).listTransactions(workspaceId, { month: "2026-09", search: "coffee" });
     assert.equal(migrated.length, 1);
     assert.equal(migrated[0].id, recordId);
     assert.equal(migrated[0].amountMinor, 1250);
@@ -328,34 +255,24 @@ test("personal PHP workspaces migrate old Web records and report the shared Mobi
     assert.equal(data.total, 1);
     assert.equal(data.summary.expenseMinor, 1250);
     assert.equal(data.items[0].workspaceId, workspaceId);
-    assert.equal(data.items[0].revision, 1);
-    assert.deepEqual(data.categories, [
-      { name: "Food", amountMinor: 1250, count: 1 },
-    ]);
+    assert.deepEqual(data.categories, [{ name: "Food", amountMinor: 1250, count: 1 }]);
   });
 });
+
 test("personal Web writes use the same PHP records as Mobile", async () => {
   let created;
-  const workspaceTransactions = {
-    find: () => ({ sort: () => ({ lean: async () => [] }) }),
-  };
+  const db = database({
+    workspaces: [workspace(workspaceId, "owner", "personal")],
+    query: async () => ({ rows: [] }),
+  });
   const personal = personalTransactionService({
-    create: async (record) => {
-      created = record;
-      return {
-        id: recordId,
-        userId: "alice",
-        ...record,
-        revision: 1,
-      };
+    create: async row => {
+      created = row;
+      return { id: recordId, userId: "alice", ...row, revision: 1 };
     },
   });
   await actor("alice", async () => {
-    const transaction = await new WorkspacesService(
-      workspaceModel("owner", "personal"),
-      workspaceTransactions,
-      personal,
-    ).createTransaction(workspaceId, {
+    const row = await service(db, personal).createTransaction(workspaceId, {
       clientMutationId: "web-create-1",
       type: "expense",
       amountMinor: 1234,
@@ -366,129 +283,85 @@ test("personal Web writes use the same PHP records as Mobile", async () => {
     });
     assert.equal(created.amount, 12.34);
     assert.equal(created.userId, "alice");
-    assert.equal(transaction.id, recordId);
-    assert.equal(transaction.amountMinor, 1234);
+    assert.equal(row.id, recordId);
+    assert.equal(row.amountMinor, 1234);
   });
 });
+
 test("invalid calendar dates and empty labels cannot be persisted", () => {
-  assert.throws(
-    () =>
-      validateRecord({
-        date: "2026-02-30",
-        description: "Lunch",
-        category: "Food",
-      }),
-    { status: 400 },
-  );
-  assert.throws(
-    () =>
-      validateRecord({
-        date: "2026-09-01",
-        description: " ",
-        category: "Food",
-      }),
-    { status: 400 },
-  );
-  assert.doesNotThrow(() =>
-    validateRecord({
-      date: "2024-02-29",
-      description: "Lunch",
-      category: "Food",
-    }),
-  );
+  assert.throws(() => validateRecord({ date: "2026-02-30", description: "Lunch", category: "Food" }), { status: 400 });
+  assert.throws(() => validateRecord({ date: "2026-09-01", description: " ", category: "Food" }), { status: 400 });
+  assert.doesNotThrow(() => validateRecord({ date: "2024-02-29", description: "Lunch", category: "Food" }));
   assert.equal(escapeSearch("$100 (cash)"), "\\$100 \\(cash\\)");
 });
+
 test("new personal workspaces reject currencies Mobile cannot represent", async () => {
-  await actor("alice", async () =>
-    assert.rejects(
-      new WorkspacesService({}, {}, personalTransactionService()).create({
-        name: "Personal",
-        kind: "personal",
-        currency: "USD",
-        clientMutationId: "personal-usd",
-      }),
-      { status: 400 },
-    ),
-  );
+  await actor("alice", async () => assert.rejects(
+    service({}, personalTransactionService()).create({ name: "Personal", kind: "personal", currency: "USD", clientMutationId: "personal-usd" }),
+    { status: 400 },
+  ));
 });
+
 test("workspace currency defaults to PHP and supports TWD, CNY and KRW at creation", async () => {
   for (const currency of [undefined, "TWD", "CNY", "KRW"]) {
-    const model = {
-      findOneAndUpdate(filter, update) {
-        assert.equal(update.$setOnInsert.currency, currency ?? "PHP");
-        return {
-          lean: async () => ({
-            ...update.$setOnInsert,
-            _id: new Types.ObjectId(workspaceId),
-          }),
-        };
-      },
-    };
-    await actor("alice", () =>
-      new WorkspacesService(model, {}, personalTransactionService()).create({
-        name: "Currency test",
-        kind: "business",
-        clientMutationId: "currency-test",
-        currency,
+    let created;
+    const db = database({
+      workspaces: [workspace(workspaceId, "owner", "business", currency ?? "PHP")],
+      transaction: async operation => operation({
+        query: async (sql, values) => {
+          if (sql.startsWith("insert into public.workspaces")) {
+            assert.equal(values[4], currency ?? "PHP");
+            created = { ...workspace(workspaceId, "owner", "business", currency ?? "PHP"), name: values[1] };
+            return { rows: [] };
+          }
+          if (sql.startsWith("select * from public.workspaces")) return { rows: [created] };
+          return { rows: [] };
+        },
       }),
-    );
+    });
+    await actor("alice", () => service(db).create({ name: "Currency test", kind: "business", clientMutationId: "currency-test", currency }));
   }
 });
+
 test("currency validation rejects unknown codes and workspace currency is immutable", async () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
   const { validate } = require("class-validator");
   const { CreateWorkspaceDto } = require("../dist/workspaces/workspaces.dto");
-  const { WorkspaceSchema } = require("../dist/workspaces/workspace.schema");
   for (const currency of ["TWD", "CNY", "KRW", "USD"])
-    assert.equal(
-      (
-        await validate(
-          Object.assign(new CreateWorkspaceDto(), {
-            name: "Test",
-            kind: "business",
-            clientMutationId: "test-currency",
-            currency,
-          }),
-        )
-      ).length,
-      0,
-    );
-  const errors = await validate(
-    Object.assign(new CreateWorkspaceDto(), {
-      name: "Test",
-      kind: "business",
-      clientMutationId: "test-currency",
-      currency: "NTD",
-    }),
-  );
-  assert.ok(errors.some((e) => e.property === "currency"));
-  assert.equal(WorkspaceSchema.path("currency").options.immutable, true);
+    assert.equal((await validate(Object.assign(new CreateWorkspaceDto(), { name: "Test", kind: "business", clientMutationId: "test-currency", currency }))).length, 0);
+  const errors = await validate(Object.assign(new CreateWorkspaceDto(), { name: "Test", kind: "business", clientMutationId: "test-currency", currency: "NTD" }));
+  assert.ok(errors.some(error => error.property === "currency"));
+  const migration = fs.readFileSync(path.join(__dirname, "../supabase/002_constraints.sql"), "utf8");
+  assert.match(migration, /new\.currency is distinct from old\.currency/);
+  assert.match(migration, /before update on public\.workspaces/);
 });
 
 test("existing workspace memberships are identical for Web and Mobile and isolated per account", async () => {
   const rows = [
-    { _id: new Types.ObjectId(), name: 'Existing personal', kind: 'personal', currency: 'PHP', timezone: 'Asia/Manila', ownerId: 'alice', members: [{ userId: 'alice', role: 'owner', status: 'active' }] },
-    { _id: new Types.ObjectId(), name: 'Existing shared business', kind: 'business', currency: 'USD', timezone: 'Asia/Manila', ownerId: 'alice', members: [{ userId: 'alice', role: 'owner', status: 'active' }, { userId: 'bob', role: 'finance', status: 'active' }] },
-    { _id: new Types.ObjectId(), name: 'Other personal', kind: 'personal', currency: 'PHP', timezone: 'Asia/Manila', ownerId: 'bob', members: [{ userId: 'bob', role: 'owner', status: 'active' }, { userId: 'alice', role: 'viewer', status: 'suspended' }] },
-    { _id: new Types.ObjectId(), name: 'Unrelated', kind: 'business', currency: 'PHP', timezone: 'Asia/Manila', ownerId: 'carol', members: [{ userId: 'carol', role: 'owner', status: 'active' }] },
+    workspace("507f1f77bcf86cd799439011", "owner", "personal"),
+    workspace("507f1f77bcf86cd799439012", "owner", "business", "USD"),
+    workspace("507f1f77bcf86cd799439013", "owner", "personal"),
+    workspace("507f1f77bcf86cd799439014", "owner", "business"),
   ];
-  const service = new WorkspacesService({
-    find(filter) {
-      const { userId, status } = filter.members.$elemMatch;
-      assert.equal(status, 'active');
-      return { sort: () => ({ lean: async () => rows.filter(row => row.members.some(member => member.userId === userId && member.status === status)) }) };
-    },
-  }, {}, personalTransactionService());
+  rows[1].members.bob = { role: "finance", status: "active" };
+  rows[2].members = { bob: { role: "owner", status: "active" }, alice: { role: "viewer", status: "suspended" } };
+  rows[3].members = { carol: { role: "owner", status: "active" } };
+  const db = database({ workspaces: rows });
+  const workspaces = service(db);
   const [aliceWeb, bobMobile, aliceMobile] = await Promise.all([
-    actor('alice', () => service.list()), actor('bob', () => service.list()), actor('alice', () => service.list()),
+    actor("alice", () => workspaces.list()),
+    actor("bob", () => workspaces.list()),
+    actor("alice", () => workspaces.list()),
   ]);
   assert.deepEqual(aliceWeb, aliceMobile);
-  assert.deepEqual(aliceMobile.map(row => row.id), rows.slice(0, 2).map(row => String(row._id)));
-  assert.deepEqual(bobMobile.map(row => row.id), rows.slice(1, 3).map(row => String(row._id)));
-  assert.equal(aliceMobile[1].role, 'owner');
-  assert.equal(bobMobile[0].role, 'finance');
-  assert.deepEqual(await actor('new-account', () => service.list()), []);
-  rows[1].members[1].status = 'suspended';
-  assert.deepEqual((await actor('bob', () => service.list())).map(row => row.id), [String(rows[2]._id)]);
-  rows[3].members.push({ userId: 'bob', role: 'viewer', status: 'active' });
-  assert.deepEqual((await actor('bob', () => service.list())).map(row => row.id), [String(rows[2]._id), String(rows[3]._id)]);
+  assert.deepEqual(aliceMobile.map(row => row.id), rows.slice(0, 2).map(row => row.id));
+  assert.deepEqual(bobMobile.map(row => row.id), rows.slice(1, 3).map(row => row.id));
+  assert.equal(aliceMobile[1].role, "owner");
+  assert.equal(bobMobile[0].role, "finance");
+  assert.deepEqual(await actor("new-account", () => workspaces.list()), []);
+  rows[1].members.bob.status = "suspended";
+  assert.deepEqual((await actor("bob", () => workspaces.list())).map(row => row.id), [rows[2].id]);
+  rows[3].members.bob = { role: "viewer", status: "active" };
+  assert.deepEqual((await actor("bob", () => workspaces.list())).map(row => row.id), [rows[2].id, rows[3].id]);
 });

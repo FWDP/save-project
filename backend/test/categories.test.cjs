@@ -22,12 +22,13 @@ test('catalog contains all supplied groups and uniquely identified parent/subcat
 test('existing accounts receive defaults without losing custom categories or duplicating labels', async () => {
   const custom = [{ id: 'custom', name: 'My category', type: 'expense', color: '#000000' },
     { id: 'existing', name: 'Food & Dining', type: 'expense', color: '#111111' }];
-  const model = { find: filter => {
-    assert.deepEqual(filter, {userId:'alice'});
-    return {sort:()=>({lean:async()=>custom})};
+  const database = { query: async (sql, values) => {
+    assert.match(sql, /from public\.categories where user_id = \$1/);
+    assert.deepEqual(values, ['alice']);
+    return { rows: custom.map(category => ({ ...category, replaces_built_in_id: category.replacesBuiltInId })) };
   } };
   await authContext.run({userId:'alice'}, async()=> {
-    const result = await new CategoriesService(model).findAll();
+    const result = await new CategoriesService(database).findAll();
     assert.ok(result.some(category=>category.id === 'custom'));
     assert.equal(result.filter(category=>category.name === 'Food & Dining').length, 1);
     assert.ok(result.some(category=>category.name === 'Housing & Home / Rent'));

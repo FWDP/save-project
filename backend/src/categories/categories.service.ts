@@ -1,14 +1,12 @@
-import { currentOwner } from '../auth/auth-context';
 import {
-  Injectable,
-  NotFoundException,
-  ServiceUnavailableException,
+    Injectable,
+    NotFoundException,
+    ServiceUnavailableException,
 } from '@nestjs/common';
-import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
+import { currentOwner } from '../auth/auth-context';
+import { DatabaseService, newRecordId } from '../database/database.service';
 
 import { CreateCategoryDto, UpdateCategoryDto } from './categories.dto';
-import { Category, CategoryDocument } from './category.schema';
 import { BUILTIN_CATEGORIES } from './category-catalog';
 
 export type CategoryResponse = {
@@ -24,20 +22,18 @@ export type CategoryResponse = {
 
 function toCategoryResponse(doc: any): CategoryResponse {
   return {
-    id: doc._id?.toString() ?? doc.id,
+    id: doc.id,
     name: doc.name,
     type: doc.type,
     color: doc.color,
     builtIn: doc.builtIn,
-    replacesBuiltInId: doc.replacesBuiltInId,
+    replacesBuiltInId: doc.replaces_built_in_id,
   };
 }
 
 @Injectable()
 export class CategoriesService {
-  constructor(
-    @InjectModel(Category.name) private readonly model: Model<CategoryDocument>,
-  ) {}
+  constructor(private readonly database: DatabaseService) {}
   private async db<T>(operation: () => PromiseLike<T>): Promise<T> {
     try {
       return await operation();
@@ -50,9 +46,10 @@ export class CategoriesService {
   async findAll(): Promise<CategoryResponse[]> {
     const userId = currentOwner();
     const custom = (
-      await this.db(() =>
-        this.model.find({ userId }).sort({ createdAt: -1 }).lean(),
-      )
+      await this.db(() => this.database.query(
+        'select id, name, type, color, replaces_built_in_id from public.categories where user_id = $1 order by created_at desc',
+        [userId],
+      ).then(result => result.rows))
     ).map(toCategoryResponse);
     const replaced = new Set(custom.map((category: any) => category.replacesBuiltInId).filter(Boolean));
     const names = new Set(custom.map((category) => `${category.type}:${category.name.toLowerCase()}`));
@@ -62,38 +59,44 @@ export class CategoriesService {
     const userId = currentOwner();
     const builtIn = BUILTIN_CATEGORIES.find((category) => category.id === id);
     if (builtIn) return builtIn;
-    if (!Types.ObjectId.isValid(id)) throw new NotFoundException();
+    if (!/^[a-f0-9]{24}$/i.test(id)) throw new NotFoundException();
     const row = await this.db(() =>
-      this.model.findOne({ _id: id, userId }).lean(),
+      this.database.query(
+        'select id, name, type, color, replaces_built_in_id from public.categories where id = $1 and user_id = $2',
+        [id, userId],
+      ).then(result => result.rows[0]),
     );
     if (!row) throw new NotFoundException();
     return toCategoryResponse(row);
   }
   async create(dto: CreateCategoryDto): Promise<CategoryResponse> {
     const userId = currentOwner();
-    const row = await this.db(() => new this.model({ ...dto, userId, builtIn: false }).save());
-    return toCategoryResponse(row.toObject());
+    const row = await this.db(() => this.database.query(
+      'insert into public.categories (id, user_id, name, type, color, replaces_built_in_id) values ($1, $2, $3, $4, $5, $6) returning id, name, type, color, replaces_built_in_id',
+      [newRecordId(), userId, dto.name, dto.type, dto.color ?? '#6366F1', dto.replacesBuiltInId ?? null],
+    ).then(result => result.rows[0]));
+    return toCategoryResponse(row);
   }
   async update(id: string, dto: UpdateCategoryDto): Promise<CategoryResponse> {
     const userId = currentOwner();
-    if (!Types.ObjectId.isValid(id)) throw new NotFoundException();
+    if (!/^[a-f0-9]{24}$/i.test(id)) throw new NotFoundException();
     const row = await this.db(() =>
-      this.model
-        .findOneAndUpdate(
-          { _id: id, userId },
-          { $set: { ...dto, userId } },
-          { new: true, runValidators: true },
-        )
-        .lean(),
+      this.database.query(
+        'update public.categories set name = coalesce($3, name), type = coalesce($4, type), color = coalesce($5, color), replaces_built_in_id = coalesce($6, replaces_built_in_id), updated_at = now() where id = $1 and user_id = $2 returning id, name, type, color, replaces_built_in_id',
+        [id, userId, dto.name ?? null, dto.type ?? null, dto.color ?? null, null],
+      ).then(result => result.rows[0]),
     );
     if (!row) throw new NotFoundException();
     return toCategoryResponse(row);
   }
   async remove(id: string): Promise<{ deleted: boolean }> {
     const userId = currentOwner();
-    if (!Types.ObjectId.isValid(id)) throw new NotFoundException();
+    if (!/^[a-f0-9]{24}$/i.test(id)) throw new NotFoundException();
     const row = await this.db(() =>
-      this.model.findOneAndDelete({ _id: id, userId }).lean(),
+      this.database.query(
+        'delete from public.categories where id = $1 and user_id = $2 returning id',
+        [id, userId],
+      ).then(result => result.rows[0]),
     );
     if (!row) throw new NotFoundException();
     return { deleted: true };

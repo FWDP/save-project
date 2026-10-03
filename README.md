@@ -100,7 +100,7 @@ flowchart LR
   API --> RPC[Stellar RPC]
   Horizon --> Stellar
   RPC --> Stellar
-  API --> Data[(MongoDB)]
+  API --> Data[(Supabase Postgres)]
 ```
 
 The browser or mobile client cannot declare a transaction successful. SAVE reconciles network evidence before it updates the final transaction state.
@@ -134,17 +134,18 @@ These are public Testnet identifiers, not credentials. Deployments may be replac
 - **Mobile:** Expo SDK 57, React Native 0.86, React 19, TypeScript, and Expo Router.
 - **Client data:** Zustand, TanStack Query, SQLite, SecureStore, and AsyncStorage.
 - **Device features:** Expo Camera, FileSystem, Local Authentication, and native development builds.
-- **Backend:** NestJS 11, MongoDB/Mongoose, Redis, BullMQ, and Swagger/OpenAPI.
+- **Backend:** NestJS 11, Supabase Postgres, Redis, BullMQ, and Swagger/OpenAPI.
 - **Stellar:** `@stellar/stellar-sdk`, Horizon, Stellar RPC, WalletConnect v2, and Freighter Mobile.
 - **Smart contract:** Rust, Soroban SDK, Stellar CLI, and the SAVE Savings Vault.
 - **Admin:** Next.js 16 and React 19.
-- **Local infrastructure:** Docker Compose, MongoDB, Redis, and Silo (MinIO-compatible) object storage.
+- **Local infrastructure:** Docker Compose, Redis, and Silo (MinIO-compatible) object storage. MongoDB is retained only as a temporary migration source/backup.
 
 ## Current implementation update
 
 The mobile app now includes authenticated personal records, shared month selection, editable transactions and budgets, durable pending transaction uploads, receipt attachments, and reviewed imports/file exports. Configure the hosted sign-in provider before using the app; the former local demo profile is no longer authentication.
 
 - [Authentication setup and migration notes](docs/AUTH_SETUP.md)
+- [MongoDB to Supabase Postgres migration record](docs/MONGO_TO_SUPABASE_MIGRATION.md)
 - [Mobile implementation and validation](docs/MOBILE_IMPROVEMENTS.md)
 - [SAVE Web personal/business implementation plan](docs/SAVE_WEB_IMPLEMENTATION_PLAN.md)
 
@@ -179,7 +180,7 @@ cp admin/.env.example admin/.env.local
 
 Set `EXPO_PUBLIC_API_URL` to a backend URL reachable by the phone, such as `http://192.168.1.25:3000`. Add your public `EXPO_PUBLIC_WALLETCONNECT_PROJECT_ID`; values prefixed with `EXPO_PUBLIC_` are bundled into the client and must never contain secrets.
 
-Configure Supabase Auth using the setup guide above. Review the local MongoDB, Redis, Silo/MinIO, Stellar Testnet, callback, and contract settings in `backend/.env` before starting the API. The admin app can use `admin/.env.local` for its own API configuration.
+Configure Supabase Auth using the setup guide above. Set `SUPABASE_DB_URL` in `backend/.env` to the Supabase Session Pooler Postgres URL (port `5432`) and review the Redis, Silo/MinIO, Stellar Testnet, callback, and contract settings before starting the API. Keep database credentials server-side. The admin app can use `admin/.env.local` for its own API configuration.
 
 Validate the configuration and installed tool versions before continuing:
 
@@ -300,4 +301,4 @@ This repository includes an [MIT license](LICENSE).
 
 The first SAVE Web slice lives in `web/`: personal/business workspaces, transactions, overview and reports. Run `npm run web:dev` on port 3002 after following [Web setup](web/README.md). The existing `npm run web` command remains the Expo browser preview.
 
-Web sign-in requires Supabase configuration; persistent records require the NestJS API and MongoDB. Existing mobile records are not yet migrated into Web workspaces. See the [implementation status and next phases](docs/SAVE_WEB_IMPLEMENTATION_PLAN.md).
+Web sign-in and persistent records require the configured Supabase Auth project, Supabase Postgres, and NestJS API. Ownerless legacy rows are preserved in the private migration quarantine for operator review. See the [implementation status and migration notes](docs/MONGO_TO_SUPABASE_MIGRATION.md).

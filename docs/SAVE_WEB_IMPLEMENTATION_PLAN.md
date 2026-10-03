@@ -37,7 +37,7 @@ flowchart LR
   Web --> Auth[Supabase Auth]
   Mobile --> Auth
   API --> Auth
-  API --> DB[(MongoDB)]
+  API --> DB[(Supabase Postgres)]
   API --> Files[Private receipt storage]
   API --> Ledger[Stellar Testnet verification]
 ```

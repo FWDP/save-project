@@ -1,5 +1,5 @@
-import { ForbiddenException, BadRequestException } from "@nestjs/common";
-import type { WorkspaceRole } from "./workspace.schema";
+import { BadRequestException, ForbiddenException } from "@nestjs/common";
+export type WorkspaceRole = "owner" | "admin" | "finance" | "member" | "viewer";
 export function assertWrite(role: WorkspaceRole) {
   if (role === "viewer")
     throw new ForbiddenException("This workspace is read-only for your role.");
