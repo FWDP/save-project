@@ -72,7 +72,7 @@ export default function TabLayout() {
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
       <AnimatedSplashOverlay />
       <FinanceDataProvider key={account ?? 'signed-out'} userId={account}>
-        <WorkspaceProvider>
+        <WorkspaceProvider userId={account}>
         <WorkspaceFinanceProvider>
         <Stack
           screenOptions={{

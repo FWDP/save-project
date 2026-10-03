@@ -6,7 +6,7 @@ import { FinancePage } from '@/components/layout/finance-page';
 import { useWorkspaceFinance } from '@/components/providers/workspace-finance-provider';
 import { useWorkspace } from '@/components/providers/workspace-provider';
 import {
-  fetchWorkspaces, createWorkspace, fetchWorkspaceTransactions,
+  createWorkspace, fetchWorkspaceTransactions,
   saveWorkspaceTransaction, deleteWorkspaceTransaction,
   type ApiWorkspaceTransaction, type WorkspaceTransactionPage,
 } from '@/lib/api';
@@ -20,7 +20,7 @@ export default function WorkspacesScreen() {
   const router = useRouter();
   const { add } = useLocalSearchParams<{ add?: string }>();
   const { refresh: refreshFinance } = useWorkspaceFinance();
-  const { workspaces, setWorkspaces, selectedId, setSelectedId } = useWorkspace();
+  const { workspaces, setWorkspaces, selectedId, setSelectedId, refreshWorkspaces } = useWorkspace();
   const [page, setPage] = useState(1);
   const [data, setData] = useState<WorkspaceTransactionPage | null>(null);
   const [loading, setLoading] = useState(true);
@@ -44,7 +44,7 @@ export default function WorkspacesScreen() {
     const request = ++generation.current;
     setLoading(true);
     try {
-      const list = await fetchWorkspaces();
+      const list = await refreshWorkspaces();
       if (request !== generation.current) return;
       setWorkspaces(list);
       if (!selectedId) {
@@ -64,7 +64,7 @@ export default function WorkspacesScreen() {
     } finally {
       if (request === generation.current) setLoading(false);
     }
-  }, [selectedId, page, setWorkspaces, setSelectedId]);
+  }, [selectedId, page, setWorkspaces, setSelectedId, refreshWorkspaces]);
 
   useFocusEffect(useCallback(() => {
     void load();

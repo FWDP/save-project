@@ -17,28 +17,30 @@ export function WorkspaceFinanceProvider({ children }: PropsWithChildren) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const generation = useRef(0);
-  const currency = workspace?.currency;
   const invalidate = useCallback(() => { generation.current++; }, []);
   const refresh = useCallback(async () => {
     const request = ++generation.current;
     setLoading(true); setError(null);
     try {
-      if (!selectedId) {
-        const available = await refreshWorkspaces();
-        if (request === generation.current && !available.length)
-          setError('No workspace is available. Create one from Workspaces.');
+      const available = await refreshWorkspaces();
+      if (request !== generation.current) return;
+      if (!available.length) {
+        setSnapshot(null);
+        setError('No active workspace memberships were found for this signed-in account. Open Workspaces to retry or create a workspace.');
         return;
       }
-      if (!currency) return;
-      if (personal) await refreshPersonalWorkspace(selectedId, refreshPersonal);
+      const selected = available.find(item => item.id === selectedId);
+      // The workspace provider selects a valid replacement; its next render loads it.
+      if (!selected) { setSnapshot(null); return; }
+      if (supportsPersonalFinance(selected)) await refreshPersonalWorkspace(selected.id, refreshPersonal);
       else {
-        const rows = await fetchAllWorkspaceTransactions(selectedId);
-        if (request === generation.current) setSnapshot({ id: selectedId, transactions: rows.map(row => workspaceTransaction(row, currency)), updated: new Date().toISOString() });
+        const rows = await fetchAllWorkspaceTransactions(selected.id);
+        if (request === generation.current) setSnapshot({ id: selected.id, transactions: rows.map(row => workspaceTransaction(row, selected.currency)), updated: new Date().toISOString() });
       }
     } catch (err) {
       if (request === generation.current) { setSnapshot(null); setError(err instanceof Error ? err.message : 'Could not sync workspace.'); }
     } finally { if (request === generation.current) setLoading(false); }
-  }, [selectedId, currency, personal, refreshPersonal, refreshWorkspaces]);
+  }, [selectedId, refreshPersonal, refreshWorkspaces]);
   useEffect(() => {
     const initial = setTimeout(() => void refresh(), 0);
     const timer = setInterval(() => { if (AppState.currentState === 'active') void refresh(); }, 30000);

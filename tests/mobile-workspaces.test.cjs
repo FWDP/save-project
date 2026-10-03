@@ -435,3 +435,33 @@ test('mobile account creation redirects to workspaces instead of dashboard', () 
   assert.equal(auth.consumePostAuthRedirect(), '/workspaces');
   assert.equal(auth.consumePostAuthRedirect(), null);
 });
+
+test('new accounts get an idempotent personal workspace and existing memberships are preserved', async () => {
+  let rows = [];
+  const calls = [];
+  const personal = { id: 'personal', kind: 'personal', currency: 'PHP', role: 'owner' };
+  const bootstrap = load(path.join(root, 'workspace-bootstrap.ts'), {
+    './api': {
+      fetchWorkspaces: async () => rows,
+      createWorkspace: async (payload, owner) => { calls.push({ payload, owner }); return personal; },
+    },
+  });
+  assert.deepEqual(await bootstrap.loadAccountWorkspaces('alice'), [personal]);
+  assert.deepEqual(await bootstrap.loadAccountWorkspaces('alice'), [personal]);
+  assert.equal(calls[0].payload.clientMutationId, calls[1].payload.clientMutationId);
+  assert.equal(calls[0].owner, 'alice');
+  assert.equal(calls[0].payload.currency, 'PHP');
+  rows = [{ id: 'shared', kind: 'business', role: 'viewer' }];
+  assert.deepEqual(await bootstrap.loadAccountWorkspaces('alice'), rows);
+  assert.equal(calls.length, 2);
+});
+
+test('workspace loading errors do not create replacement workspaces', async () => {
+  const bootstrap = load(path.join(root, 'workspace-bootstrap.ts'), {
+    './api': {
+      fetchWorkspaces: async () => { throw new Error('Session expired'); },
+      createWorkspace: async () => assert.fail('Must not create after a failed fetch'),
+    },
+  });
+  await assert.rejects(bootstrap.loadAccountWorkspaces('alice'), /Session expired/);
+});

@@ -257,13 +257,13 @@ async function apiError(response: Response, path: string) {
   );
 }
 
-async function postJson<T>(path: string, payload: unknown): Promise<T> {
+async function postJson<T>(path: string, payload: unknown, expectedOwner?: string): Promise<T> {
   const url = `${getApiBaseUrl()}${path}`;
   const response = await apiFetch(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${await accessToken()}`,
+      Authorization: `Bearer ${await accessToken(expectedOwner)}`,
     },
     body: JSON.stringify(payload),
   });
@@ -397,7 +397,7 @@ const workspacePath = (id: string) => `/workspaces/${encodeURIComponent(id)}`;
 export const fetchWorkspaces = () => getJson<ApiWorkspace[]>('/workspaces');
 export const createWorkspace = (payload: {
   name: string; kind: 'personal' | 'business'; currency: string; clientMutationId: string;
-}) => postJson<ApiWorkspace>('/workspaces', payload);
+}, expectedOwner?: string) => postJson<ApiWorkspace>('/workspaces', payload, expectedOwner);
 export function fetchWorkspaceTransactions(id: string, page = 1, month?: string) {
   const query = new URLSearchParams({ page: String(page) });
   if (month) query.set('month', month);
