@@ -1,51 +1,27 @@
 import { useFocusEffect, useRouter } from 'expo-router';
-import { useCallback, useRef, useState } from 'react';
-import { AppState, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useMemo, useState } from 'react';
+import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MonthPicker } from '@/components/month-picker';
 import { SaveDashboard } from '@/components/dashboard/save-dashboard';
+import { ExpenseHistory } from '@/components/dashboard/expense-history';
 import { AppSidebar } from '@/components/navigation/app-sidebar';
-import { useWorkspace } from '@/components/providers/workspace-provider';
-import { useFinanceStore } from '@/store/finance-store';
-import { loadWorkspaceDashboard, type WorkspaceDashboardData } from '@/lib/workspace-dashboard';
+import { useWorkspaceFinance } from '@/components/providers/workspace-finance-provider';
+import { dashboardFromTransactions, expenseHistory } from '@/lib/workspace-dashboard';
 
 export default function DashboardScreen() {
   const router = useRouter();
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const { selectedMonth } = useFinanceStore();
-  const { workspaces, selectedId, refreshWorkspaces } = useWorkspace();
-  const workspace = workspaces.find(item => item.id === selectedId);
-  const [snapshot, setSnapshot] = useState<WorkspaceDashboardData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const generation = useRef(0);
-  // Never render a previous workspace or month's snapshot during a switch.
-  const data = snapshot?.workspaceId === selectedId && snapshot.month === selectedMonth ? snapshot : null;
-  const refresh = useCallback(async () => {
-    const request = ++generation.current;
-    setLoading(true); setError(null);
-    try {
-      const list = await refreshWorkspaces();
-      if (request !== generation.current) return;
-      const selected = list.find(item => item.id === selectedId);
-      if (!selected) { setSnapshot(null); return; }
-      const result = await loadWorkspaceDashboard(selected, selectedMonth);
-      if (request === generation.current) setSnapshot(result);
-    } catch (err) {
-      if (request === generation.current) {
-        setSnapshot(null);
-        setError(err instanceof Error ? err.message : 'Could not sync this workspace.');
-      }
-    } finally { if (request === generation.current) setLoading(false); }
-  }, [refreshWorkspaces, selectedId, selectedMonth]);
-  useFocusEffect(useCallback(() => {
-    void refresh();
-    const timer = setInterval(() => { if (AppState.currentState === 'active') void refresh(); }, 30000);
-    const listener = AppState.addEventListener('change', state => { if (state === 'active') void refresh(); });
-    return () => { generation.current++; clearInterval(timer); listener.remove(); };
-  }, [refresh]));
-  const personal = workspace?.kind === 'personal' && workspace.currency === 'PHP';
-  const openRecords = () => router.push('/workspaces');
+  const { workspace, transactions, budgets, selectedMonth, personal, isLoading: loading,
+    syncError: error, lastUpdatedAt, refresh } = useWorkspaceFinance();
+  const data = useMemo(() => workspace
+    ? dashboardFromTransactions(workspace, selectedMonth, transactions, budgets)
+    : null, [workspace, selectedMonth, transactions, budgets]);
+  const allExpenses = useMemo(() => expenseHistory(transactions, workspace?.currency ?? 'PHP'), [transactions, workspace?.currency]);
+  useFocusEffect(useCallback(() => { void refresh(); }, [refresh]));
+  const openRecords = () => router.push('/transactions');
+  const syncMessage = loading ? 'Syncing…' : error ?? (lastUpdatedAt
+    ? `Updated ${new Date(lastUpdatedAt).toLocaleTimeString()}` : 'Waiting for first sync');
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
@@ -53,7 +29,7 @@ export default function DashboardScreen() {
         <Pressable accessibilityLabel="Open navigation" style={styles.iconButton} onPress={() => setSidebarOpen(true)}>
           <Text style={styles.iconText}>☰</Text>
         </Pressable>
-        <Pressable accessibilityRole="button" accessibilityLabel="Change workspace" style={{ flex: 1 }} onPress={openRecords}>
+        <Pressable accessibilityRole="button" accessibilityLabel="Change workspace" style={{ flex: 1 }} onPress={() => router.push('/workspaces')}>
           <Text numberOfLines={1} style={{ color: '#f4f7fb', fontSize: 18, fontWeight: '800' }}>SAVE · {workspace?.name ?? 'Choose workspace'} ⌄</Text>
         </Pressable>
         <Pressable accessibilityLabel="Workspace transactions" style={{ padding: 12 }} onPress={openRecords}>
@@ -62,13 +38,18 @@ export default function DashboardScreen() {
       </View>
       <ScrollView style={styles.scrollView} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={loading} onRefresh={refresh} tintColor="#55a6ff" />}>
-        <MonthPicker />
+        <Text accessibilityLiveRegion="polite" style={{ color: '#9ba9bf', padding: 12 }}>{syncMessage}</Text>
         {error ? <View style={{ padding: 16 }}><Text accessibilityRole="alert" style={{ color: '#ff788c' }}>{error}</Text>
           <Pressable onPress={() => void refresh()} style={{ paddingVertical: 12 }}><Text style={{ color: '#75b6ff' }}>Retry sync</Text></Pressable></View> : null}
+        {workspace ? <ExpenseHistory key={workspace.id} transactions={transactions} currency={workspace.currency}
+          onOpen={id => router.push({ pathname: '/transaction-detail', params: { id } })} /> : null}
+        <Text style={{ color: '#f4f7fb', fontWeight: '700', padding: 12 }}>Monthly overview</Text>
+        <MonthPicker />
         {workspace && data ? <SaveDashboard
           monthKey={selectedMonth} workspaceName={workspace.name} currency={workspace.currency}
-          showBudgets={personal} budgets={data.budgets} transactions={data.transactions} totals={data.totals}
-          loading={loading} syncMessage={error} onTransactionPress={openRecords}
+          showBudgets={personal} budgets={data.budgets} transactions={data.transactions} totals={data.totals} allExpenses={allExpenses}
+          transactionCounts={{ income: transactions.filter(item => item.type === 'income').length, expense: allExpenses.count }}
+          loading={loading} onTransactionPress={id => router.push({ pathname: '/transaction-detail', params: { id } })}
         /> : !error ? <Text style={{ color: '#9ba9bf', padding: 16 }}>{loading || workspace ? 'Loading workspace dashboard…' : 'Choose or create a workspace to see its dashboard.'}</Text> : null}
       </ScrollView>
       {workspace && workspace.role !== 'viewer' ? <View style={styles.fabGroup}>

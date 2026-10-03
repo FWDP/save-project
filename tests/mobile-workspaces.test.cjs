@@ -194,26 +194,58 @@ test('personal workspace import runs before the account refresh, and refresh sti
 test('receipt scans upload native files as authenticated multipart and surface API errors', async () => {
   const previousFetch = global.fetch;
   const previousFormData = global.FormData;
-  class NativeFormData {
-    fields = new Map();
-    append(name, value) { this.fields.set(name, value); }
+  const { installFormDataPatch } = load(path.join(__dirname, '../node_modules/expo/src/winter/FormData.ts'));
+  class RNFormData { constructor() { this._parts = []; } }
+  global.FormData = installFormDataPatch(RNFormData);
+  const { convertFormDataAsync } = load(path.join(__dirname, '../node_modules/expo/src/winter/fetch/convertFormData.ts'), {
+    '../../utils/blobUtils': { blobToArrayBufferAsync: blob => blob.arrayBuffer() },
+  });
+  let mime = 'image/jpeg';
+  let fileSize = 13;
+  let exists = true;
+  class ReceiptFile {
+    constructor(uri) { assert.equal(uri, 'file:///receipt.jpg'); }
+    size = fileSize;
+    exists = exists;
+    name = 'receipt.jpg';
+    type = mime;
+    async bytes() { return new TextEncoder().encode('receipt-bytes'); }
+    slice() { throw new Error('Creating blobs from ArrayBufferView is not supported'); }
   }
-  global.FormData = NativeFormData;
   const parsed = { merchant: 'Shop', amount: 125.5, date: '2026-10-03', category: 'Food' };
   global.fetch = async (url, options) => {
     assert.ok(url.endsWith('/receipts/scan'));
     assert.equal(options.headers.Authorization, 'Bearer test-token');
     assert.equal(options.headers['Content-Type'], undefined);
-    assert.deepEqual(options.body.fields.get('file'), { uri: 'file:///receipt.jpg', type: 'image/jpeg', name: 'receipt.jpeg' });
-    assert.deepEqual(JSON.parse(options.body.fields.get('categories')), ['Food']);
+    const file = options.body.get('file');
+    assert.ok(file instanceof ReceiptFile);
+    assert.equal(file.type, mime);
+    assert.equal(file.name, 'receipt.jpg');
+    assert.equal(new TextDecoder().decode(await file.bytes()), 'receipt-bytes');
+    assert.deepEqual(JSON.parse(options.body.get('categories')), ['Food']);
+    const multipart = await convertFormDataAsync(options.body, 'test-boundary');
+    assert.match(new TextDecoder().decode(multipart.body), /receipt-bytes/);
+    assert.ok(new TextDecoder().decode(multipart.body).includes(`content-type: ${mime}`));
     return new Response(JSON.stringify(parsed), { status: 200 });
   };
   try {
     const api = load(path.join(root, 'api.ts'), {
       './auth': { accessToken: async () => 'test-token' },
+      'expo-file-system': { File: ReceiptFile },
+      'expo/fetch': { fetch: (...args) => global.fetch(...args) },
       'expo-constants': { default: {} }, 'react-native': { Platform: { OS: 'android' } },
     });
     assert.deepEqual(await api.scanReceiptWithAi('file:///receipt.jpg', 'image/jpeg', ['Food']), parsed);
+    for (mime of ['image/png', 'image/webp']) {
+      assert.deepEqual(await api.scanReceiptWithAi('file:///receipt.jpg', mime, ['Food']), parsed);
+    }
+    fileSize = 10 * 1024 * 1024 + 1;
+    await assert.rejects(api.scanReceiptWithAi('file:///receipt.jpg'), /10 MB/);
+    fileSize = 0;
+    await assert.rejects(api.scanReceiptWithAi('file:///receipt.jpg'), /non-empty/);
+    fileSize = 13; exists = false;
+    await assert.rejects(api.scanReceiptWithAi('file:///receipt.jpg'), /existing/);
+    exists = true;
     await assert.rejects(api.scanReceiptWithAi('file:///receipt.pdf', 'application/pdf'), /Convert PDFs/);
     global.fetch = async () => new Response(JSON.stringify({ message: 'Gemini Live could not complete the scan.' }), { status: 503 });
     await assert.rejects(api.scanReceiptWithAi('file:///receipt.jpg'), /Gemini Live could not complete/);
@@ -254,4 +286,152 @@ test('Transactions shows both types across all dates and pending uploads unless 
   assert.deepEqual(filterTransactions(rows, { ...options, search: 'cafe' }).map(row => row.id), ['expense']);
   assert.deepEqual(filterTransactions(rows, { ...options, ascending: true }).map(row => row.id), ['old-income', 'expense', 'pending']);
   assert.equal(rows[0].id, 'old-income');
+});
+
+test('dashboard derives live monthly totals from shared records, including pending changes', () => {
+  const { dashboardFromTransactions } = load(path.join(root, 'workspace-dashboard.ts'), { './api': {} });
+  const workspace = { id: 'personal', kind: 'personal', currency: 'PHP' };
+  const budgets = [{ id: 'monthly', period: 'monthly', limit: 100 }, { id: 'yearly', period: 'yearly', limit: 1200 }];
+  const rows = [
+    { id: 'salary', type: 'income', amount: 1000, date: '2026-10-01' },
+    { id: 'purchase', type: 'expense', amount: 25.75, date: '2026-10-02' },
+    { id: 'pending', type: 'expense', amount: 10.1, date: '2026-10-03', syncState: 'pending' },
+    { id: 'old', type: 'expense', amount: 500, date: '2026-09-30' },
+    { id: 'rejected', type: 'expense', amount: 500, date: '2026-10-03', status: 'rejected' },
+  ];
+  const data = dashboardFromTransactions(workspace, '2026-10', rows, budgets);
+  assert.deepEqual(data.totals, { income: 1000, expenses: 35.85, balance: 964.15 });
+  assert.deepEqual(data.transactions.map(row => row.id), ['pending', 'purchase', 'salary']);
+  assert.equal(data.transactions[0].syncState, 'pending');
+  assert.deepEqual(data.budgets, [budgets[0]]);
+  const updated = dashboardFromTransactions(workspace, '2026-10', rows.filter(row => row.id !== 'purchase'), budgets);
+  assert.equal(updated.totals.expenses, 10.1);
+  const business = dashboardFromTransactions({ id: 'business', kind: 'business', currency: 'KWD' }, '2026-10', [
+    { id: 'income', type: 'income', amount: 1.234, date: '2026-10-01' },
+    { id: 'expense', type: 'expense', amount: 0.111, date: '2026-10-02' },
+  ], budgets);
+  assert.deepEqual(business.totals, { income: 1.234, expenses: 0.111, balance: 1.123 });
+  assert.deepEqual(business.budgets, []);
+});
+
+test('dashboard expense history includes every date, preserves details and counts, and searches without changing totals', () => {
+  const { expenseHistory } = load(path.join(root, 'workspace-dashboard.ts'), { './api': {} });
+  const rows = [
+    { id: 'old', type: 'expense', amount: 10.25, date: '2025-01-01', description: 'Train', category: 'Travel', receiptUri: 'file:///receipt.jpg', recurring: true },
+    { id: 'new', type: 'expense', amount: 20.1, date: '2026-10-03', description: 'Lunch', category: 'Food', tags: ['Work'], syncState: 'pending' },
+    { id: 'rejected', type: 'expense', amount: 100, date: '2026-10-02', description: 'Rejected', status: 'rejected' },
+    { id: 'salary', type: 'income', amount: 1000, date: '2026-10-01', description: 'Salary' },
+  ];
+  const result = expenseHistory(rows, 'PHP');
+  assert.equal(result.count, 3);
+  assert.equal(result.total, 30.35);
+  assert.equal(result.pending, 1);
+  assert.equal(result.rejected, 1);
+  assert.deepEqual(result.rows.map(row => row.id), ['new', 'rejected', 'old']);
+  assert.equal(result.rows[2].receiptUri, 'file:///receipt.jpg');
+  const filtered = expenseHistory(rows, 'PHP', 'work');
+  assert.equal(filtered.total, 30.35);
+  assert.equal(filtered.count, 3);
+  assert.deepEqual(filtered.rows.map(row => row.id), ['new']);
+  assert.equal(expenseHistory([{ ...rows[0], amount: 1.234 }], 'KWD').total, 1.234);
+});
+
+test('all-date expense total updates after additions, edits and deletions independently of dashboard month', () => {
+  const { expenseHistory, dashboardFromTransactions } = load(path.join(root, 'workspace-dashboard.ts'), { './api': {} });
+  const workspace = { id: 'personal', kind: 'personal', currency: 'PHP' };
+  const old = { id: 'old', type: 'expense', amount: 100, date: '2025-01-01' };
+  const current = { id: 'current', type: 'expense', amount: 25.5, date: '2026-10-03' };
+  const rows = [old, current];
+  assert.equal(dashboardFromTransactions(workspace, '2026-10', rows, []).totals.expenses, 25.5);
+  assert.equal(expenseHistory(rows, 'PHP').total, 125.5);
+  const added = [...rows, { id: 'new', type: 'expense', amount: 10, date: '2026-09-01', syncState: 'pending' }];
+  assert.equal(expenseHistory(added, 'PHP').total, 135.5);
+  assert.equal(expenseHistory(added.map(row => row.id === 'old' ? { ...row, amount: 200 } : row), 'PHP').total, 235.5);
+  assert.equal(expenseHistory(added.filter(row => row.id !== 'current'), 'PHP').total, 110);
+});
+
+test('budgets keep full category paths separate and sum exact centavos', () => {
+  const { budgetSpent, normalizeCategory } = load(path.join(root, 'finance.ts'));
+  const budget = { category: 'Food / Other', limit: 100, period: 'monthly' };
+  const rows = [
+    { type: 'expense', category: ' food/other ', amount: 0.1, date: '2026-10-01' },
+    { type: 'expense', category: 'Food / Other', amount: 0.2, date: '2026-10-02', syncState: 'pending' },
+    { type: 'expense', category: 'Travel / Other', amount: 100, date: '2026-10-01' },
+    { type: 'expense', category: 'Other', amount: 100, date: '2026-10-01' },
+    { type: 'expense', category: 'Food / Other', amount: 100, date: '2026-10-01', status: 'rejected' },
+    { type: 'income', category: 'Food / Other', amount: 100, date: '2026-10-01' },
+    { type: 'expense', category: 'Food / Other', amount: 100, date: '2026-09-01' },
+  ];
+  assert.equal(budgetSpent(budget, rows, '2026-10'), 0.3);
+  assert.equal(normalizeCategory(' Food/ OTHER '), normalizeCategory(budget.category));
+  assert.notEqual(normalizeCategory('Travel / Other'), normalizeCategory(budget.category));
+});
+
+test('budget edits respect category-wide uniqueness, weekly conversion and PHP precision', () => {
+  const { prepareMonthlyBudget } = load(path.join(root, 'budget-form.ts'));
+  const budgets = [{ id: 'weekly', category: 'Food / Lunch', limit: 100, period: 'weekly' }];
+  assert.throws(() => prepareMonthlyBudget(' food/lunch ', '200', budgets, null), /weekly budget/);
+  assert.deepEqual(prepareMonthlyBudget('Food / Lunch', '200.50', budgets, 'weekly'), { category: 'Food / Lunch', limit: 200.5, period: 'monthly' });
+  for (const amount of ['0', '-1', '1.001', '1e3', 'Infinity'])
+    assert.throws(() => prepareMonthlyBudget('Food', amount, [], null));
+  for (const category of ['', 'Food / ', 'a'.repeat(81)])
+    assert.throws(() => prepareMonthlyBudget(category, '100', [], null));
+  assert.throws(() => prepareMonthlyBudget('Food', '100', [], 'deleted'), /removed/);
+});
+
+test('budget summary counts each expense once despite legacy duplicate budgets', () => {
+  const { totalBudgetSpent } = load(path.join(root, 'finance.ts'));
+  const budgets = [
+    { category: 'Food', period: 'monthly' }, { category: ' food ', period: 'monthly' },
+    { category: 'Travel', period: 'weekly' },
+  ];
+  const rows = [
+    { type: 'expense', category: 'Food', amount: 10.1, date: '2026-10-01' },
+    { type: 'expense', category: 'Travel', amount: 50, date: '2026-10-01' },
+  ];
+  assert.equal(totalBudgetSpent(budgets, rows, '2026-10'), 10.1);
+});
+
+test('parent budgets include subcategory expenses without double-counting the overall spending', () => {
+  const { budgetSpent, totalBudgetSpent, budgetCategoryMatches } = load(path.join(root, 'finance.ts'));
+  const parent = { category: 'Food & Dining', limit: 1000, period: 'monthly' };
+  const child = { category: 'Food & Dining / Groceries', limit: 500, period: 'monthly' };
+  const rows = [
+    { type: 'expense', category: 'food & dining/ groceries', amount: 125.5, date: '2026-10-01' },
+    { type: 'expense', category: 'Food & Dining / Dine Out', amount: 50, date: '2026-10-02' },
+    { type: 'expense', category: 'Food & Dining', amount: 10, date: '2026-10-03' },
+    { type: 'expense', category: 'Food & Dining / Groceries', amount: 100, date: '2026-09-30' },
+    { type: 'income', category: 'Food & Dining / Groceries', amount: 1000, date: '2026-10-01' },
+    { type: 'expense', category: 'Food & Dining / Groceries', amount: 1000, date: '2026-10-01', status: 'rejected' },
+  ];
+  assert.equal(budgetSpent(parent, rows, '2026-10'), 185.5);
+  assert.equal(budgetSpent(child, rows, '2026-10'), 125.5);
+  assert.equal(totalBudgetSpent([parent, child], rows, '2026-10'), 185.5);
+  assert.equal(budgetCategoryMatches('Food', 'Food & Dining'), false);
+  assert.equal(budgetCategoryMatches('Food / Other', 'Travel / Other'), false);
+  assert.equal(budgetCategoryMatches('Food / Other', 'Other'), false);
+});
+
+test('mobile account creation redirects to workspaces instead of dashboard', () => {
+  let createdUrl = '';
+  const auth = load(path.join(root, 'auth.ts'), {
+    'expo-linking': {
+      createURL: (route, options) => {
+        const query = options?.queryParams?.next ? `?next=${encodeURIComponent(options.queryParams.next)}` : '';
+        return `save://${route.replace(/^\//, '')}${query}`;
+      },
+    },
+    'expo-secure-store': {},
+    'expo-web-browser': {},
+    'react-native': { Platform: { OS: 'ios' } },
+    '@supabase/supabase-js': { createClient: () => ({}) },
+  });
+
+  assert.equal(auth.authRedirect(), 'save://auth/callback');
+  assert.equal(auth.authRedirect('/workspaces'), 'save://auth/callback?next=%2Fworkspaces');
+
+  assert.equal(auth.consumePostAuthRedirect(), null);
+  auth.setPendingPostAuthRedirect('/workspaces');
+  assert.equal(auth.consumePostAuthRedirect(), '/workspaces');
+  assert.equal(auth.consumePostAuthRedirect(), null);
 });

@@ -33,7 +33,13 @@ export function FinanceDataProvider({
     const request = (async () => {
       useFinanceStore.getState().setLoading(true);
       try {
-        await flushTransactions(userId);
+        let uploadFailed = false;
+        try {
+          await flushTransactions(userId);
+        } catch {
+          // A rejected queued write must not block downloading newer records.
+          uploadFailed = true;
+        }
         if (!active.current) return;
         const initial = useFinanceStore.getState();
         // Apply one coherent snapshot; partial results must not mix periods or budgets.
@@ -50,7 +56,10 @@ export function FinanceDataProvider({
         )
           return;
         const state = useFinanceStore.getState();
-        state.setTransactions([...pendingTransactions(userId), ...transactions]);
+        const pending = pendingTransactions(userId);
+        const uploadedKeys = new Set(transactions.map(row => row.clientMutationId).filter(Boolean));
+        const unconfirmed = pending.filter(row => !row.clientMutationId || !uploadedKeys.has(row.clientMutationId));
+        state.setTransactions([...unconfirmed, ...transactions]);
         state.setBudgets(budgets);
         state.setCategories(categories);
         try {
@@ -58,7 +67,12 @@ export function FinanceDataProvider({
         } catch {
           /* Live data remains available. */
         }
-        state.setSyncState(null, new Date().toISOString());
+        state.setSyncState(
+          pending.length
+            ? `Latest records downloaded; ${pending.length} transaction(s) awaiting upload confirmation.`
+            : uploadFailed ? 'Latest records downloaded. Upload could not complete; retry sync.' : null,
+          new Date().toISOString(),
+        );
       } catch {
         if (active.current) {
           const state = useFinanceStore.getState();

@@ -48,11 +48,13 @@ function AddExpenseScreen() {
     setAiStatus('✨ Gemini AI is analyzing your receipt…');
     try {
       const parsed = await scanReceiptWithAi(localUri, mimeType, availableCategories.map(c => c.name));
+      if (useExpenseDraftStore.getState().draft.receiptUri !== localUri) return;
       patchDraft(receiptDraftFields(parsed, availableCategories));
       setAiStatus(
         `✓ Scanned with Gemini AI: ${parsed.merchant || 'Receipt'} (${parsed.currency || '₱'}${parsed.amount})`,
       );
     } catch (err: unknown) {
+      if (useExpenseDraftStore.getState().draft.receiptUri !== localUri) return;
       const errText =
         err instanceof Error ? err.message : 'Could not parse with AI';
       setAiStatus(`AI pre-fill unavailable (${errText}). Receipt attached.`);
@@ -81,9 +83,9 @@ function AddExpenseScreen() {
         mimeTypes: ['image/jpeg', 'image/png', 'image/webp'],
       });
       if (!selected.canceled) {
-        const localUri = await persistReceipt(selected.result.uri);
-        patchDraft({ receiptUri: localUri });
         const mimeType = selected.result.type || 'image/jpeg';
+        const localUri = await persistReceipt(selected.result.uri, mimeType);
+        patchDraft({ receiptUri: localUri, receiptMimeType: mimeType });
         await processReceiptWithAi(localUri, mimeType);
       }
     } catch {
@@ -317,6 +319,12 @@ function AddExpenseScreen() {
             <Text style={styles.receiptMeta}>JPEG, PNG, WebP</Text>
           </Pressable>
         </View>
+        {draft.receiptUri && !analyzing && !aiStatus?.startsWith('✓') ? (
+          <Pressable disabled={saving} style={styles.dashedButton}
+            onPress={() => void processReceiptWithAi(draft.receiptUri!, draft.receiptMimeType)}>
+            <Text style={styles.dashedText}>Retry receipt scan</Text>
+          </Pressable>
+        ) : null}
         {analyzing ? (
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 10 }}>
             <ActivityIndicator size="small" color="#75b6ff" />

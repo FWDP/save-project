@@ -102,17 +102,18 @@ function ReceiptCameraScreen() {
               if (analyzing) return;
               setAnalyzing(true);
               try {
-                const localUri = await persistReceipt(photoUri);
-                patchDraft({ receiptUri: localUri });
-                setAnalyzing(true);
+                const localUri = await persistReceipt(photoUri, 'image/jpeg');
+                patchDraft({ receiptUri: localUri, receiptMimeType: 'image/jpeg' });
                 try {
                   const choices = categories.filter(c => c.type === draft.type);
                   const parsed = await scanReceiptWithAi(localUri, 'image/jpeg', choices.map(c => c.name));
+                  if (useExpenseDraftStore.getState().draft.receiptUri !== localUri) return;
                   patchDraft({
                     ...receiptDraftFields(parsed, choices),
                     receiptStatus: '✓ Receipt scanned. Review the filled fields before saving.',
                   });
                 } catch (error) {
+                  if (useExpenseDraftStore.getState().draft.receiptUri !== localUri) return;
                   const message = error instanceof Error ? error.message : 'Could not read the receipt.';
                   patchDraft({ receiptStatus: `AI pre-fill unavailable: ${message} Photo attached; enter details manually or retry.` });
                   Alert.alert('Receipt scan unavailable', message);

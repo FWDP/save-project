@@ -1,11 +1,12 @@
 import { File, Paths, Directory } from 'expo-file-system';
 import { randomUUID } from 'expo-crypto';
 import { Platform } from 'react-native';
-export async function persistReceipt(uri: string) {
+export async function persistReceipt(uri: string, mimeType?: string) {
   if (Platform.OS === 'web') return uri;
   const folder = new Directory(Paths.document, 'receipts');
   folder.create({ idempotent: true, intermediates: true });
-  const extension = uri.split('.').pop()?.split('?')[0];
+  const extensions: Record<string, string> = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' };
+  const extension = (mimeType && extensions[mimeType]) || uri.split('.').pop()?.split('?')[0];
   const file = new File(
     folder,
     `${randomUUID()}.${extension && /^[a-zA-Z0-9]+$/.test(extension) ? extension : 'jpg'}`,

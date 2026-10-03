@@ -1,12 +1,18 @@
 import { useEffect, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { finishAuth, getAuthUser, authRedirect } from '@/lib/auth';
+import {
+  finishAuth,
+  getAuthUser,
+  authRedirect,
+  setPendingPostAuthRedirect,
+} from '@/lib/auth';
 export default function AuthCallback() {
   const params = useLocalSearchParams<{
     code?: string;
     error?: string;
     error_description?: string;
+    next?: string;
   }>();
   const router = useRouter();
   const [message, setMessage] = useState('Completing sign-in…');
@@ -17,11 +23,17 @@ export default function AuthCallback() {
     void (async () => {
       if (!(await getAuthUser()))
         await finishAuth(`${authRedirect()}?${query}`);
-      router.replace('/');
+      const nextParam = Array.isArray(params.next) ? params.next[0] : params.next;
+      const target =
+        typeof nextParam === 'string' && nextParam.startsWith('/')
+          ? nextParam
+          : '/';
+      setPendingPostAuthRedirect(target === '/' ? null : target);
+      router.replace(target as any);
     })().catch((error) =>
       setMessage(error.message || 'Sign-in failed. Please request a new link.'),
     );
-  }, [params.code, params.error, params.error_description, router]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [params.code, params.error, params.error_description, params.next, router]); // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <View style={{ flex: 1, justifyContent: 'center', padding: 24, gap: 24 }}>
       <Text style={{ color: '#f4f7fb' }}>{message}</Text>

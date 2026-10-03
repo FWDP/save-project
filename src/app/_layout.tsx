@@ -1,8 +1,14 @@
-import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
+import {
+  DarkTheme,
+  DefaultTheme,
+  Stack,
+  ThemeProvider,
+  useRouter,
+} from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useColorScheme, View, ActivityIndicator } from 'react-native';
 import { useEffect, useRef, useState } from 'react';
-import { authClient, getAuthUser } from '@/lib/auth';
+import { authClient, consumePostAuthRedirect, getAuthUser } from '@/lib/auth';
 import { useFinanceStore } from '@/store/finance-store';
 import { useExpenseDraftStore } from '@/store/expense-draft-store';
 
@@ -14,9 +20,16 @@ import { WorkspaceFinanceProvider } from '@/components/providers/workspace-finan
 SplashScreen.preventAutoHideAsync();
 
 export default function TabLayout() {
+  const router = useRouter();
   const colorScheme = useColorScheme();
   const currentAccount = useRef<string | null | undefined>(undefined);
   const [account, setAccount] = useState<string | null | undefined>(undefined);
+  useEffect(() => {
+    if (account) {
+      const next = consumePostAuthRedirect();
+      if (next) router.replace(next as any);
+    }
+  }, [account, router]);
   useEffect(() => {
     let alive = true;
     const change = (id: string | null) => {

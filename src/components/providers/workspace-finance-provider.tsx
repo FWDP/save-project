@@ -59,7 +59,7 @@ export function useWorkspaceFinance() {
     transactions: selectedWorkspaceTransactions(workspace, personalData.transactions, scoped),
     budgets: personal ? personalData.budgets : [], categories: personal ? personalData.categories : [],
     isLoading: scoped.loading || (personal && personalData.isLoading),
-    syncError: personal ? personalData.syncError : scoped.error,
+    syncError: scoped.error ?? (personal ? personalData.syncError : null),
     lastUpdatedAt: personal ? personalData.lastUpdatedAt : scoped.updated,
     selectedMonth: personalData.selectedMonth,
   };

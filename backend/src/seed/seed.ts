@@ -3,21 +3,22 @@ import { getModelToken } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 
 import { AppModule } from '../app.module';
-import { User, UserDocument } from '../users/user.schema';
-import { Category, CategoryDocument } from '../categories/category.schema';
-import { Transaction, TransactionDocument } from '../transactions/transaction.schema';
 import { Budget, BudgetDocument } from '../budgets/budget.schema';
+import { Category, CategoryDocument } from '../categories/category.schema';
 import { SavingsGoal, SavingsGoalDocument } from '../savings/savings-goal.schema';
+import { Transaction, TransactionDocument } from '../transactions/transaction.schema';
+import { User, UserDocument } from '../users/user.schema';
 import {
-  DEMO_CATEGORIES,
-  DEMO_TRANSACTIONS,
-  DEMO_BUDGETS,
-  DEMO_SAVINGS_GOALS,
+    DEMO_BUDGETS,
+    DEMO_CATEGORIES,
+    DEMO_SAVINGS_GOALS,
+    DEMO_TRANSACTIONS,
 } from './demo-data';
 
 async function seed() {
   console.log('Bootstrapping SAVE NestJS Application Context for seeding...');
   const app = await NestFactory.createApplicationContext(AppModule, { logger: ['error', 'warn', 'log'] });
+  const resetExistingData = process.argv.includes('--reset');
 
   const userModel = app.get<Model<UserDocument>>(getModelToken(User.name));
   const categoryModel = app.get<Model<CategoryDocument>>(getModelToken(Category.name));
@@ -25,15 +26,35 @@ async function seed() {
   const budgetModel = app.get<Model<BudgetDocument>>(getModelToken(Budget.name));
   const savingsGoalModel = app.get<Model<SavingsGoalDocument>>(getModelToken(SavingsGoal.name));
 
-  console.log('Clearing existing database collections...');
-  await Promise.all([
-    userModel.deleteMany({}),
-    categoryModel.deleteMany({}),
-    transactionModel.deleteMany({}),
-    budgetModel.deleteMany({}),
-    savingsGoalModel.deleteMany({}),
+  const collectionCounts = await Promise.all([
+    userModel.countDocuments({}),
+    categoryModel.countDocuments({}),
+    transactionModel.countDocuments({}),
+    budgetModel.countDocuments({}),
+    savingsGoalModel.countDocuments({}),
   ]);
-  console.log('Collections cleared.');
+  if (collectionCounts.some((count) => count > 0) && !resetExistingData) {
+    console.error(
+      'Seed refused: finance data already exists. Pass --reset only to intentionally clear seeded collections.',
+    );
+    await app.close();
+    process.exitCode = 1;
+    return;
+  }
+
+  if (resetExistingData) {
+    console.warn(
+      'Explicit --reset requested; deleting every document in users, categories, transactions, budgets, and savings goals.',
+    );
+    await Promise.all([
+      userModel.deleteMany({}),
+      categoryModel.deleteMany({}),
+      transactionModel.deleteMany({}),
+      budgetModel.deleteMany({}),
+      savingsGoalModel.deleteMany({}),
+    ]);
+    console.log('Seeded collections cleared.');
+  }
 
   // Seed Users
   const users = await userModel.insertMany([

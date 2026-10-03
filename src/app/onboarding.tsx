@@ -6,6 +6,7 @@ import {
   authConfigured,
   authRedirect,
   requireAuthClient,
+  setPendingPostAuthRedirect,
   signInGoogle,
 } from '@/lib/auth';
 
@@ -23,7 +24,9 @@ export default function OnboardingScreen() {
     try {
       const client = requireAuthClient();
       if (action === 'google') {
-        await signInGoogle();
+        if (signup) setPendingPostAuthRedirect('/workspaces');
+        await signInGoogle(signup ? '/workspaces' : undefined);
+        if (signup) router.replace('/workspaces');
         return;
       }
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()))
@@ -31,7 +34,9 @@ export default function OnboardingScreen() {
       if (action === 'magic') {
         const { error } = await client.auth.signInWithOtp({
           email: email.trim(),
-          options: { emailRedirectTo: authRedirect() },
+          options: {
+            emailRedirectTo: authRedirect(signup ? '/workspaces' : undefined),
+          },
         });
         if (error) throw error;
         setMessage('Check your email. Open the sign-in link on this device.');
@@ -39,21 +44,26 @@ export default function OnboardingScreen() {
       }
       if (signup && password.length < 12)
         throw new Error('Use a password with at least 12 characters.');
+      if (signup) setPendingPostAuthRedirect('/workspaces');
       const { data, error } = signup
         ? await client.auth.signUp({
             email: email.trim(),
             password,
-            options: { emailRedirectTo: authRedirect() },
+            options: { emailRedirectTo: authRedirect('/workspaces') },
           })
         : await client.auth.signInWithPassword({
             email: email.trim(),
             password,
           });
-      if (error) throw error;
-      if (data.session) router.replace('/');
+      if (error) {
+        setPendingPostAuthRedirect(null);
+        throw error;
+      }
+      if (data.session) router.replace(signup ? '/workspaces' : '/');
       else
         setMessage('Check your email to confirm your account on this device.');
     } catch (error) {
+      setPendingPostAuthRedirect(null);
       setMessage(
         error instanceof Error
           ? error.message

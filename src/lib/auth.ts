@@ -71,11 +71,23 @@ export async function accessToken(expectedOwner?: string) {
     throw new Error('Account changed. Retry from your account.');
   return data.session.access_token;
 }
-export function authRedirect() {
-  return Linking.createURL('/auth/callback');
+let pendingRedirect: string | null = null;
+export function setPendingPostAuthRedirect(path: string | null) {
+  pendingRedirect = path;
 }
-export async function signInGoogle() {
-  const redirectTo = authRedirect();
+export function consumePostAuthRedirect(): string | null {
+  const next = pendingRedirect;
+  pendingRedirect = null;
+  return next;
+}
+export function authRedirect(next?: string) {
+  return Linking.createURL(
+    '/auth/callback',
+    next ? { queryParams: { next } } : undefined,
+  );
+}
+export async function signInGoogle(next?: string) {
+  const redirectTo = authRedirect(next);
   const { data, error } = await requireAuthClient().auth.signInWithOAuth({
     provider: 'google',
     options: { redirectTo, skipBrowserRedirect: true },

@@ -184,11 +184,11 @@ export function getApiBaseUrl(): string {
   return 'http://localhost:3000';
 }
 
-async function apiFetch(url: string, options?: RequestInit, timeoutMs = 30_000) {
+async function apiFetch(url: string, options?: RequestInit, timeoutMs = 30_000, fetcher: typeof fetch = fetch) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    return await fetch(url, { ...options, signal: controller.signal });
+    return await fetcher(url, { ...options, signal: controller.signal });
   } finally {
     clearTimeout(timeout);
   }
@@ -562,20 +562,27 @@ export async function scanReceiptWithAi(
   const token = await accessToken();
   const body = new FormData();
   const name = `receipt.${mimeType.split('/')[1]}`;
+  let receiptFetch = fetch;
   if (Platform.OS === 'web') {
     const image = await fetch(uri);
     if (!image.ok) throw new Error('Could not read the receipt image.');
-    body.append('file', await image.blob(), name);
+    const blob = await image.blob();
+    if (!blob.size || blob.size > 10 * 1024 * 1024) throw new Error('Choose a non-empty receipt image up to 10 MB.');
+    body.append('file', blob, name);
   } else {
-    // React Native uploads local files by URI; let fetch set the multipart boundary.
-    body.append('file', { uri, type: mimeType, name } as unknown as Blob);
+    const { File } = await import('expo-file-system');
+    const file = new File(uri);
+    if (!file.exists || !file.size || file.size > 10 * 1024 * 1024) throw new Error('Choose an existing, non-empty receipt image up to 10 MB.');
+    // Pass the File directly: slice() constructs a typed-array Blob unsupported by RN.
+    body.append('file', file);
+    receiptFetch = (await import('expo/fetch')).fetch as typeof fetch;
   }
   body.append('categories', JSON.stringify(categories));
   const response = await apiFetch(`${getApiBaseUrl()}/receipts/scan`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}` },
     body,
-  }, 60_000);
+  }, 60_000, receiptFetch);
 
   if (!response.ok) {
     let errMessage = `Failed to scan receipt (HTTP ${response.status})`;

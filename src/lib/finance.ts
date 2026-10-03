@@ -44,16 +44,25 @@ export function budgetSpent(
   items: ApiTransaction[],
   month: string,
 ) {
-  const normalize = (value: string) => {
-    const clean = value.trim().toLocaleLowerCase();
-    return [clean, clean.split('/').pop()?.trim() ?? clean];
-  };
-  const category = normalize(budget.category);
   return monthTransactions(items, month)
     .filter(
-      (t) => t.type === 'expense' && normalize(t.category).some(value => category.includes(value)),
+      (t) => t.type === 'expense' && budgetCategoryMatches(budget.category, t.category),
     )
-    .reduce((sum, transaction) => sum + transaction.amount, 0);
+    .reduce((sum, transaction) => sum + Math.round(transaction.amount * 100), 0) / 100;
+}
+export function normalizeCategory(value: string) {
+  return value.split('/').map(part => part.trim().toLowerCase()).join(' / ');
+}
+export function budgetCategoryMatches(budgetCategory: string, transactionCategory: string) {
+  const budget = normalizeCategory(budgetCategory);
+  const category = normalizeCategory(transactionCategory);
+  return Boolean(budget) && (category === budget || category.startsWith(`${budget} / `));
+}
+export function totalBudgetSpent(budgets: ApiBudget[], items: ApiTransaction[], month: string) {
+  const categories = new Set(budgets.filter(budget => budget.period === 'monthly').map(budget => normalizeCategory(budget.category)));
+  return monthTransactions(items, month)
+    .filter(item => item.type === 'expense' && [...categories].some(category => budgetCategoryMatches(category, item.category)))
+    .reduce((sum, item) => sum + Math.round(item.amount * 100), 0) / 100;
 }
 export function merchantTotals(items: ApiTransaction[], fractionDigits = 2) {
   const scale = 10 ** fractionDigits;

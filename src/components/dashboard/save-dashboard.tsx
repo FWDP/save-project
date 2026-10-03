@@ -1,5 +1,5 @@
 import { useRouter } from 'expo-router';
-import { budgetSpent, merchantTotals } from '@/lib/finance';
+import { budgetSpent, totalBudgetSpent, merchantTotals } from '@/lib/finance';
 import { currencyDigits } from '@/lib/workspace-money';
 import { useMemo } from 'react';
 import {
@@ -27,8 +27,9 @@ type SaveDashboardProps = {
   transactions: ApiTransaction[];
   budgets: ApiBudget[];
   totals: DashboardTotals;
+  allExpenses: { total: number; count: number; pending: number; rejected: number };
+  transactionCounts: { income: number; expense: number };
   loading: boolean;
-  syncMessage: string | null;
 };
 
 const palette = {
@@ -116,8 +117,9 @@ export function SaveDashboard({
   budgets,
   transactions,
   totals,
+  allExpenses,
+  transactionCounts,
   loading,
-  syncMessage,
 }: SaveDashboardProps) {
   const router = useRouter();
   const formatMoney = (value: number) => new Intl.NumberFormat('en-PH', { style: 'currency', currency }).format(value);
@@ -146,19 +148,6 @@ export function SaveDashboard({
       }
     }
     return [...values.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5);
-  }, [currentMonthStr, expenses]);
-
-  const categorySpentMap = useMemo(() => {
-    const map = new Map<string, number>();
-    for (const transaction of expenses) {
-      if (transaction.date.startsWith(currentMonthStr)) {
-        map.set(
-          transaction.category,
-          (map.get(transaction.category) ?? 0) + transaction.amount,
-        );
-      }
-    }
-    return map;
   }, [currentMonthStr, expenses]);
 
   const dailySpending = useMemo(() => {
@@ -210,10 +199,7 @@ export function SaveDashboard({
   // Compare only spending in categories that actually have a budget. Expenses
   // in unbudgeted categories remain visible elsewhere but cannot inflate this
   // budget progress indicator.
-  const budgetedSpent = budgets.reduce(
-    (sum, budget) => sum + budgetSpent(budget, transactions, currentMonthStr),
-    0,
-  );
+  const budgetedSpent = totalBudgetSpent(budgets, transactions, currentMonthStr);
   const spendPercent = budgetTotal ? (budgetedSpent / budgetTotal) * 100 : 0;
   const maxCategorySpend = Math.max(
     ...spendingByCategory.map(([, amount]) => amount),
@@ -239,21 +225,21 @@ export function SaveDashboard({
 
       <View style={[styles.metricGrid, isWide && styles.metricGridWide]}>
         <MetricCard
-          label="Total income"
+          label="Monthly income"
           value={formatMoney(totals.income)}
           accent={palette.text}
           icon="↗"
-          note="Money received"
+          note={`${transactions.filter(item => item.type === 'income').length} income records this month`}
         />
         <MetricCard
           label="Total expenses"
-          value={formatMoney(totals.expenses)}
+          value={formatMoney(allExpenses.total)}
           accent={palette.text}
           icon="↘"
-          note="Money spent"
+          note={`All dates · ${allExpenses.count} records${allExpenses.pending ? ` · ${allExpenses.pending} awaiting upload` : ''}${allExpenses.rejected ? ' · rejected excluded' : ''}`}
         />
         <MetricCard
-          label="Net balance"
+          label="Monthly net balance"
           value={formatMoney(totals.balance)}
           accent={totals.balance < 0 ? palette.red : palette.green}
           icon="▣"
@@ -263,10 +249,10 @@ export function SaveDashboard({
         />
         <MetricCard
           label="Transactions"
-          value={String(transactions.length)}
+          value={String(transactionCounts.income + transactionCounts.expense)}
           accent={palette.text}
           icon="⌁"
-          note={loading ? 'Refreshing…' : (syncMessage ?? 'Records this month')}
+          note={`All dates · ${transactionCounts.income} income · ${transactionCounts.expense} expenses`}
         />
       </View>
 
@@ -496,9 +482,7 @@ export function SaveDashboard({
 
       {showBudgets ? <SectionCard title="Budget Progress">
         {budgets.map((budget, index) => {
-          const used = categorySpentMap.has(budget.category)
-            ? (categorySpentMap.get(budget.category) ?? 0)
-            : 0;
+          const used = budgetSpent(budget, transactions, currentMonthStr);
           const percent = budget.limit > 0 ? (used / budget.limit) * 100 : 0;
           const color = categoryColors[index % categoryColors.length];
           return (
