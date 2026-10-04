@@ -6,18 +6,16 @@ import { MonthPicker } from '@/components/month-picker';
 import { SaveDashboard } from '@/components/dashboard/save-dashboard';
 import { ExpenseHistory } from '@/components/dashboard/expense-history';
 import { AppSidebar } from '@/components/navigation/app-sidebar';
-import { useWorkspaceFinance } from '@/components/providers/workspace-finance-provider';
-import { dashboardFromTransactions, expenseHistory } from '@/lib/workspace-dashboard';
+import { useAccountFinance } from '@/components/providers/account-finance';
+import { dashboardFromTransactions, expenseHistory } from '@/lib/account-dashboard';
 
 export default function DashboardScreen() {
   const router = useRouter();
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const { workspace, transactions, budgets, selectedMonth, personal, isLoading: loading,
-    syncError: error, lastUpdatedAt, refresh } = useWorkspaceFinance();
-  const data = useMemo(() => workspace
-    ? dashboardFromTransactions(workspace, selectedMonth, transactions, budgets)
-    : null, [workspace, selectedMonth, transactions, budgets]);
-  const allExpenses = useMemo(() => expenseHistory(transactions, workspace?.currency ?? 'PHP'), [transactions, workspace?.currency]);
+  const { transactions, budgets, selectedMonth, isLoading: loading,
+    syncError: error, lastUpdatedAt, refresh } = useAccountFinance();
+  const data = useMemo(() => dashboardFromTransactions(selectedMonth, transactions, budgets), [selectedMonth, transactions, budgets]);
+  const allExpenses = useMemo(() => expenseHistory(transactions, 'PHP'), [transactions]);
   useFocusEffect(useCallback(() => { void refresh(); }, [refresh]));
   const openRecords = () => router.push('/transactions');
   const syncMessage = loading ? 'Syncing…' : error ?? (lastUpdatedAt
@@ -29,10 +27,8 @@ export default function DashboardScreen() {
         <Pressable accessibilityLabel="Open navigation" style={styles.iconButton} onPress={() => setSidebarOpen(true)}>
           <Text style={styles.iconText}>☰</Text>
         </Pressable>
-        <Pressable accessibilityRole="button" accessibilityLabel="Change workspace" style={{ flex: 1 }} onPress={() => router.push('/workspaces')}>
-          <Text numberOfLines={1} style={{ color: '#f4f7fb', fontSize: 18, fontWeight: '800' }}>SAVE · {workspace?.name ?? 'Choose workspace'} ⌄</Text>
-        </Pressable>
-        <Pressable accessibilityLabel="Workspace transactions" style={{ padding: 12 }} onPress={openRecords}>
+<View style={{ flex: 1 }}><Text style={{ color: '#f4f7fb', fontSize: 18, fontWeight: '800' }}>SAVE · My finances</Text></View>
+        <Pressable accessibilityLabel="Transactions" style={{ padding: 12 }} onPress={openRecords}>
           <Text style={{ color: '#75b6ff' }}>Records</Text>
         </Pressable>
       </View>
@@ -41,23 +37,23 @@ export default function DashboardScreen() {
         <Text accessibilityLiveRegion="polite" style={{ color: '#9ba9bf', padding: 12 }}>{syncMessage}</Text>
         {error ? <View style={{ padding: 16 }}><Text accessibilityRole="alert" style={{ color: '#ff788c' }}>{error}</Text>
           <Pressable onPress={() => void refresh()} style={{ paddingVertical: 12 }}><Text style={{ color: '#75b6ff' }}>Retry sync</Text></Pressable></View> : null}
-        {workspace ? <ExpenseHistory key={workspace.id} transactions={transactions} currency={workspace.currency}
-          onOpen={id => router.push({ pathname: '/transaction-detail', params: { id } })} /> : null}
+        <ExpenseHistory transactions={transactions} currency="PHP"
+          onOpen={id => router.push({ pathname: '/transaction-detail', params: { id } })} />
         <Text style={{ color: '#f4f7fb', fontWeight: '700', padding: 12 }}>Monthly overview</Text>
         <MonthPicker />
-        {workspace && data ? <SaveDashboard
-          monthKey={selectedMonth} workspaceName={workspace.name} currency={workspace.currency}
-          showBudgets={personal} budgets={data.budgets} transactions={data.transactions} totals={data.totals} allExpenses={allExpenses}
+        <SaveDashboard
+          monthKey={selectedMonth} accountName="My finances" currency="PHP"
+          showBudgets budgets={data.budgets} transactions={data.transactions} totals={data.totals} allExpenses={allExpenses}
           transactionCounts={{ income: transactions.filter(item => item.type === 'income').length, expense: allExpenses.count }}
           loading={loading} onTransactionPress={id => router.push({ pathname: '/transaction-detail', params: { id } })}
-        /> : !error ? <Text style={{ color: '#9ba9bf', padding: 16 }}>{loading || workspace ? 'Loading workspace dashboard…' : 'Choose or create a workspace to see its dashboard.'}</Text> : null}
+        />
       </ScrollView>
-      {workspace && workspace.role !== 'viewer' ? <View style={styles.fabGroup}>
-        <Pressable accessibilityLabel="Add workspace transaction" style={styles.fab}
-          onPress={() => router.push(personal ? '/expense-add' : { pathname: '/workspaces', params: { add: '1' } })}>
+      <View style={styles.fabGroup}>
+        <Pressable accessibilityLabel="Add transaction" style={styles.fab}
+          onPress={() => router.push('/expense-add')}>
           <Text style={styles.fabText}>+</Text>
         </Pressable>
-      </View> : null}
+      </View>
       <AppSidebar visible={sidebarOpen} onClose={() => setSidebarOpen(false)} />
     </SafeAreaView>
   );

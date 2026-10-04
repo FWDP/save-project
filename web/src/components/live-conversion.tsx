@@ -1,15 +1,13 @@
 "use client";
 import { useEffect, useState } from "react";
-import { convertedReport } from "@/app/workspaces/exchange-actions";
+import { convertedReport } from "@/app/(finance)/exchange-actions";
 import { CURRENCIES, currencyName } from "@/lib/currency";
 import { money } from "@/lib/format";
 import type { ConvertedReport } from "@/lib/types";
 export function LiveConversion({
-  workspaceId,
   currency,
   query,
 }: {
-  workspaceId: string;
   currency: string;
   query: string;
 }) {
@@ -28,7 +26,7 @@ export function LiveConversion({
       if (target === currency) return;
       setLoading(true);
       try {
-        const response = await convertedReport(workspaceId, target, query);
+        const response = await convertedReport(target, query);
         if (cancelled) return;
         clearTimeout(expiry);
         const remaining = response.data
@@ -66,7 +64,7 @@ export function LiveConversion({
       clearTimeout(timer);
       clearTimeout(expiry);
     };
-  }, [workspaceId, currency, target, query, refresh]);
+  }, [currency, target, query, refresh]);
   const data = result.data;
   return (
     <section className="panel" style={{ marginBottom: 24 }}>
@@ -144,7 +142,7 @@ export function LiveConversion({
                 </dl>
                 <a
                   className="button secondary"
-                  href={`/w/${workspaceId}/reports/export?${query}&target=${target}`}
+                  href={`/reports/export?${query}&target=${target}`}
                 >
                   Export converted summary
                 </a>

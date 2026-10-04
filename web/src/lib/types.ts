@@ -1,15 +1,5 @@
-export type Workspace = {
-  id: string;
-  name: string;
-  kind: "personal" | "business";
-  currency: string;
-  timezone: string;
-  role: "owner" | "admin" | "finance" | "member" | "viewer";
-  memberCount: number;
-};
 export type Transaction = {
   id: string;
-  workspaceId: string;
   createdBy: string;
   clientMutationId: string;
   type: "income" | "expense";

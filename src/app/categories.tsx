@@ -1,4 +1,3 @@
-import { WorkspaceScope } from '@/components/workspace-scope';
 import { useMemo, useState } from 'react';
 import {
   Alert,
@@ -361,4 +360,4 @@ const styles = StyleSheet.create({
   saveText: { color: '#07111f', fontWeight: '800' },
 });
 
-export default function ScopedPage() { return <WorkspaceScope personalOnly><CategoriesScreen /></WorkspaceScope>; }
+export default function ScopedPage() { return <><CategoriesScreen /></>; }

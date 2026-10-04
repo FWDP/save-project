@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import type { ApiTransaction } from '@/lib/api';
-import { expenseHistory } from '@/lib/workspace-dashboard';
+import { expenseHistory } from '@/lib/account-dashboard';
 
 export function ExpenseHistory({ transactions, currency, onOpen }: {
   transactions: ApiTransaction[];
@@ -30,7 +30,7 @@ export function ExpenseHistory({ transactions, currency, onOpen }: {
       </View>
       <Text style={styles.amount}>{money(item.amount)}</Text>
     </Pressable>)}
-    {!history.rows.length ? <Text style={styles.meta}>{search ? 'No matching expenses.' : 'No expense records in this workspace.'}</Text> : null}
+    {!history.rows.length ? <Text style={styles.meta}>{search ? 'No matching expenses.' : 'No expense records in your account.'}</Text> : null}
     {history.rows.length > limit ? <Pressable style={styles.more} onPress={() => setLimit(value => value + 20)}>
       <Text style={styles.text}>Show more expenses ({history.rows.length - limit} remaining)</Text>
     </Pressable> : null}

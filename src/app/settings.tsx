@@ -1,6 +1,3 @@
-import { WorkspaceScope } from '@/components/workspace-scope';
-import { WorkspaceSettings } from '@/components/workspace-settings';
-import { useWorkspaceFinance } from '@/components/providers/workspace-finance-provider';
 import { useEffect, useState } from 'react';
 import { Alert, Pressable, Text, View } from 'react-native';
 import { File } from 'expo-file-system';
@@ -442,7 +439,4 @@ function Button({
   );
 }
 
-export default function ScopedSettings() {
-  const { personal } = useWorkspaceFinance();
-  return personal ? <WorkspaceScope personalOnly><SettingsScreen /></WorkspaceScope> : <WorkspaceSettings />;
-}
+export default function AccountPage() { return <SettingsScreen />; }

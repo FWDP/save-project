@@ -32,7 +32,7 @@ function toTransactionResponse(doc: any): TransactionResponse {
   return {
     id: doc.id,
     userId: doc.user_id,
-    clientMutationId: doc.clientMutationId,
+    clientMutationId: doc.client_mutation_id,
     type: doc.type,
     amount: Number(doc.amount),
     category: doc.category,
@@ -42,8 +42,8 @@ function toTransactionResponse(doc: any): TransactionResponse {
     merchant: doc.merchant,
     tags: doc.tags ?? [],
     recurring: doc.recurring ?? false,
-    receiptUri: doc.receiptUri,
-    customFields: doc.customFields,
+    receiptUri: doc.receipt_uri,
+    customFields: doc.custom_fields,
     revision: doc.revision ?? 1,
   };
 }
@@ -157,44 +157,4 @@ export class TransactionsService {
     return { deleted: true };
   }
 
-  async importWorkspaceTransaction(transaction: {
-    id: string;
-    clientMutationId: string;
-    createdBy: string;
-    type: 'income' | 'expense';
-    amountMinor: number;
-    description: string;
-    category: string;
-    merchant: string;
-    date: string;
-  }): Promise<void> {
-    const userId = currentOwner();
-    if (transaction.createdBy !== userId)
-      throw new NotFoundException('Personal transaction not found.');
-    if (
-      !/^[a-f0-9]{24}$/i.test(transaction.id) ||
-      !Number.isSafeInteger(transaction.amountMinor) ||
-      transaction.amountMinor < 1
-    )
-      throw new ConflictException(
-        'A personal Web transaction cannot be safely shared with Mobile.',
-      );
-    const row = await this.db(async () => {
-      const inserted = await this.database.query(
-        `insert into public.transactions (id, user_id, client_mutation_id, type, amount, category, description, date, revision, status, merchant)
-         values ($1, $2, $3, $4, $5, $6, $7, $8, 1, 'pending', $9)
-         on conflict (user_id, client_mutation_id) where client_mutation_id is not null do nothing returning id`,
-        [transaction.id, userId, transaction.clientMutationId, transaction.type, transaction.amountMinor / 100, transaction.category, transaction.description, transaction.date, transaction.merchant],
-      );
-      if (inserted.rows[0]) return inserted.rows[0];
-      return (await this.database.query(
-        'select id from public.transactions where user_id = $1 and client_mutation_id = $2',
-        [userId, transaction.clientMutationId],
-      )).rows[0];
-    });
-    if (!row || String(row.id) !== transaction.id)
-      throw new ConflictException(
-        'A personal Web transaction conflicts with an existing sync record.',
-      );
-  }
 }

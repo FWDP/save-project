@@ -1,6 +1,6 @@
 import type { ApiBudget } from './api';
 import { normalizeCategory } from './finance';
-import { workspaceAmount } from './workspace-money';
+import { parseMoney } from './money';
 
 export function prepareMonthlyBudget(category: string, limit: string, budgets: ApiBudget[], editing: string | null) {
   const label = category.trim();
@@ -16,5 +16,5 @@ export function prepareMonthlyBudget(category: string, limit: string, budgets: A
   if (editing && !budgets.some(budget => budget.id === editing)) {
     throw new Error('This budget was removed. Close the form and refresh before continuing.');
   }
-  return { category: label, limit: workspaceAmount(limit, 'PHP') / 100, period: 'monthly' as const };
+  return { category: label, limit: parseMoney(limit, 'PHP') / 100, period: 'monthly' as const };
 }

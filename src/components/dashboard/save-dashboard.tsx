@@ -1,6 +1,6 @@
 import { useRouter } from 'expo-router';
 import { budgetSpent, totalBudgetSpent, merchantTotals } from '@/lib/finance';
-import { currencyDigits } from '@/lib/workspace-money';
+import { currencyDigits } from '@/lib/money';
 import { useMemo } from 'react';
 import {
   Pressable,
@@ -20,7 +20,7 @@ type DashboardTotals = {
 
 type SaveDashboardProps = {
   monthKey: string;
-  workspaceName?: string;
+  accountName?: string;
   currency?: string;
   showBudgets?: boolean;
   onTransactionPress?: (id: string) => void;
@@ -110,7 +110,7 @@ function SectionCard({
 
 export function SaveDashboard({
   monthKey,
-  workspaceName = 'Personal finances',
+  accountName = 'Personal finances',
   currency = 'PHP',
   showBudgets = true,
   onTransactionPress,
@@ -219,7 +219,7 @@ export function SaveDashboard({
       <View style={styles.pageHeading}>
         <Text style={styles.pageTitle}>Dashboard</Text>
         <Text style={styles.pageSubtitle}>
-          {workspaceName} · {currency} — {monthLabel}
+          {accountName} · {currency} — {monthLabel}
         </Text>
       </View>
 

@@ -7,7 +7,7 @@ const ACCEPT = "image/jpeg,image/png,image/webp";
 type Props = {
   /** ref to the <form> that contains the transaction fields we will auto-fill */
   formRef: React.RefObject<HTMLFormElement | null>;
-  /** ISO currency code of this workspace (e.g. "PHP") */
+  /** ISO currency code of your account (e.g. "PHP") */
   currency: string;
   categories: { name: string; type: "income" | "expense" }[];
 };

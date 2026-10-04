@@ -1,4 +1,3 @@
-import { WorkspaceScope } from '@/components/workspace-scope';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import * as Clipboard from 'expo-clipboard';
 import { useLocalSearchParams } from 'expo-router';
@@ -393,4 +392,4 @@ const styles = StyleSheet.create({
   verifiedBalance: { backgroundColor: '#0a2034', borderWidth: 1, borderColor: '#275382', borderRadius: 9, padding: 11, gap: 5 }, verifiedLabel: { color: '#61b1ff', fontSize: 9, fontWeight: '900' }, fundingBadge: { color: '#8d99ad', fontSize: 8, fontWeight: '900' }, fundingBadgeActive: { color: '#35d394' }, balanceAmount: { color: '#f4f8fc', fontSize: 20, fontWeight: '900' }, contributionProof: { backgroundColor: '#0d2925', borderWidth: 1, borderColor: '#226a57', borderRadius: 9, padding: 11, gap: 4 }, confirmedProofTitle: { color: '#38d695', fontSize: 11, fontWeight: '800' }, proofLink: { color: '#5ee0aa', fontSize: 10, fontWeight: '700', marginTop: 2 },
 });
 
-export default function ScopedPage() { return <WorkspaceScope personalOnly><StellarScreen /></WorkspaceScope>; }
+export default function ScopedPage() { return <><StellarScreen /></>; }

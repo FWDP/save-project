@@ -20,7 +20,7 @@ export function AuthLayout({ children }: { children: ReactNode }) {
           </p>
           <div className="story-points">
             <span>
-              <Icon name="check" /> Personal & business workspaces
+              <Icon name="check" /> Your finances, synced across devices
             </span>
             <span>
               <Icon name="check" /> One clear view of your money

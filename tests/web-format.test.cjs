@@ -68,7 +68,7 @@ test("currency amounts round-trip for zero, two and three decimal places", () =>
 });
 test("Web and API currency allowlists stay aligned", () => {
   const { SUPPORTED_CURRENCIES } = load(
-    path.join(__dirname, "../backend/src/workspaces/currencies.ts"),
+    path.join(__dirname, "../backend/src/ledger/currencies.ts"),
   );
   assert.deepEqual([...CURRENCIES], [...SUPPORTED_CURRENCIES]);
   for (const code of CURRENCIES)
@@ -77,10 +77,10 @@ test("Web and API currency allowlists stay aligned", () => {
       999999999999,
     );
 });
-test('transaction action uses the verified workspace currency, ignoring form overrides', async () => {
+test('transaction action uses the account PHP currency, ignoring form overrides', async () => {
   const calls = [];
   const api = async (url, options) => { calls.push({url,options}); return { currency: 'KRW' }; };
-  const { saveTransaction } = load(path.join(__dirname, '../web/src/app/workspaces/actions.ts'), {
+  const { saveTransaction } = load(path.join(__dirname, '../web/src/app/(finance)/transaction-actions.ts'), {
     'next/navigation': { redirect: () => {}, unstable_rethrow: () => {} },
     'next/cache': { revalidatePath: () => {} },
     '@/lib/api': { api },
@@ -89,7 +89,9 @@ test('transaction action uses the verified workspace currency, ignoring form ove
   const form = new FormData();
   for (const [key, value] of Object.entries({ workspaceId: '507f1f77bcf86cd799439011', amount: '1.25', currency: 'USD', date: '2026-09-23' })) form.set(key, value);
   const result = await saveTransaction({}, form);
-  assert.match(result.error, /KRW/);
+  assert.equal(result, undefined);
   assert.equal(calls.length, 1);
-  assert.equal(calls[0].options, undefined);
+  assert.equal(calls[0].url, '/transactions');
+  assert.equal(JSON.parse(calls[0].options.body).amount, 1.25);
+  assert.equal(JSON.parse(calls[0].options.body).userId, undefined);
 });

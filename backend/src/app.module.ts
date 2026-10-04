@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
-import { WorkspacesModule } from './workspaces/workspaces.module';
+import { LedgerModule } from './ledger/ledger.module';
 
 import { BudgetsModule } from './budgets/budgets.module';
 import { CategoriesModule } from './categories/categories.module';
@@ -19,7 +19,7 @@ import { UsersModule } from './users/users.module';
       envFilePath: ['.env', '../.env'],
     }),
     DatabaseModule,
-    WorkspacesModule,
+    LedgerModule,
     UsersModule,
     TransactionsModule,
     CategoriesModule,

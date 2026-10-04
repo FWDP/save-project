@@ -1,4 +1,3 @@
-import { WorkspaceScope } from '@/components/workspace-scope';
 import { DateField } from '@/components/date-field';
 import { validDate } from '@/lib/finance';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -613,4 +612,4 @@ const localStyles = StyleSheet.create({
   },
 });
 
-export default function ScopedPage() { return <WorkspaceScope personalOnly><SavingsScreen /></WorkspaceScope>; }
+export default function ScopedPage() { return <><SavingsScreen /></>; }

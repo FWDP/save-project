@@ -7,7 +7,7 @@ import {
   deleteSavingsGoal,
   saveBudget,
   saveCategory,
-} from "@/app/w/[id]/personal-finance-actions";
+} from "@/app/(finance)/personal-finance-actions";
 import type { ApiBudget, ApiCategory, ApiSavingsGoal } from "@/lib/types";
 
 const colors = [
@@ -38,16 +38,14 @@ function Result({ error, message }: { error?: string; message?: string }) {
 }
 
 export function CategoryForm({
-  workspaceId,
   category,
 }: {
-  workspaceId: string;
   category?: ApiCategory;
 }) {
   const [state, action, pending] = useActionState(saveCategory, {});
   return (
     <form action={action} className="record-form">
-      <input type="hidden" name="workspaceId" value={workspaceId} />
+
       {category && (
         <input type="hidden" name="categoryId" value={category.id} />
       )}
@@ -92,10 +90,8 @@ export function CategoryForm({
 }
 
 export function DeleteCategoryForm({
-  workspaceId,
   category,
 }: {
-  workspaceId: string;
   category: ApiCategory;
 }) {
   const [state, action, pending] = useActionState(deleteCategory, {});
@@ -103,7 +99,7 @@ export function DeleteCategoryForm({
     <details className="delete-record">
       <summary>Delete category</summary>
       <form action={action}>
-        <input type="hidden" name="workspaceId" value={workspaceId} />
+
         <input type="hidden" name="categoryId" value={category.id} />
         <p>Transactions keep their existing “{category.name}” label.</p>
         <label>
@@ -122,11 +118,9 @@ export function DeleteCategoryForm({
 }
 
 export function BudgetForm({
-  workspaceId,
   categories,
   budget,
 }: {
-  workspaceId: string;
   categories: ApiCategory[];
   budget?: ApiBudget;
 }) {
@@ -136,7 +130,7 @@ export function BudgetForm({
   );
   return (
     <form action={action} className="record-form">
-      <input type="hidden" name="workspaceId" value={workspaceId} />
+
       {budget && <input type="hidden" name="budgetId" value={budget.id} />}
       <div className="form-grid">
         <label>
@@ -180,10 +174,8 @@ export function BudgetForm({
 }
 
 export function DeleteBudgetForm({
-  workspaceId,
   budget,
 }: {
-  workspaceId: string;
   budget: ApiBudget;
 }) {
   const [state, action, pending] = useActionState(deleteBudget, {});
@@ -191,7 +183,7 @@ export function DeleteBudgetForm({
     <details className="delete-record">
       <summary>Delete budget</summary>
       <form action={action}>
-        <input type="hidden" name="workspaceId" value={workspaceId} />
+
         <input type="hidden" name="budgetId" value={budget.id} />
         <p>Transactions in {budget.category} will be kept.</p>
         <label>
@@ -209,11 +201,11 @@ export function DeleteBudgetForm({
   );
 }
 
-export function SavingsGoalForm({ workspaceId }: { workspaceId: string }) {
+export function SavingsGoalForm() {
   const [state, action, pending] = useActionState(createSavingsGoal, {});
   return (
     <form action={action} className="record-form">
-      <input type="hidden" name="workspaceId" value={workspaceId} />
+
       <div className="form-grid">
         <label>
           Goal name
@@ -246,10 +238,8 @@ export function SavingsGoalForm({ workspaceId }: { workspaceId: string }) {
 }
 
 export function DeleteSavingsGoalForm({
-  workspaceId,
   goal,
 }: {
-  workspaceId: string;
   goal: ApiSavingsGoal;
 }) {
   const [state, action, pending] = useActionState(deleteSavingsGoal, {});
@@ -257,7 +247,7 @@ export function DeleteSavingsGoalForm({
     <details className="delete-record">
       <summary>Delete goal</summary>
       <form action={action}>
-        <input type="hidden" name="workspaceId" value={workspaceId} />
+
         <input type="hidden" name="goalId" value={goal.id} />
         <p>This permanently removes “{goal.name}”.</p>
         <label>

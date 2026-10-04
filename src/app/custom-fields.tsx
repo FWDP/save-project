@@ -1,4 +1,3 @@
-import { WorkspaceScope } from '@/components/workspace-scope';
 import { getAuthUser } from '@/lib/auth';
 import { useEffect, useState } from 'react';
 import {
@@ -156,4 +155,4 @@ const localStyles = StyleSheet.create({
   },
 });
 
-export default function ScopedPage() { return <WorkspaceScope personalOnly><CustomFieldsScreen /></WorkspaceScope>; }
+export default function ScopedPage() { return <><CustomFieldsScreen /></>; }

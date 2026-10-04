@@ -3,10 +3,10 @@ const assert = require("node:assert/strict");
 const {
   ExchangeRatesService,
   convertMinor,
-} = require("../dist/workspaces/exchange-rates.service");
+} = require("../dist/ledger/exchange-rates.service");
 const {
-  WorkspacesController,
-} = require("../dist/workspaces/workspaces.controller");
+  LedgerController,
+} = require("../dist/ledger/ledger.controller");
 const now = () => new Date().toISOString();
 const body = (rate = 32, asOf = now()) => ({
   meta: { last_updated_at: asOf },
@@ -96,30 +96,22 @@ test("same currency needs no provider and missing configuration fails closed", a
 });
 test("converted reports authorize before accessing rates and preserve filtered scope", async () => {
   const query = { month: "2026-09", target: "KRW", search: "coffee" };
-  const data = {
-    total: 2,
-    summary: { incomeMinor: 100, expenseMinor: 50 },
-    categories: [{ name: "Food", amountMinor: 50, count: 1 }],
-  };
-  const controller = new WorkspacesController(
-    {
-      get: async () => ({ currency: "USD" }),
-      listTransactions: async (id, q) => {
-        assert.equal(id, "workspace");
-        assert.equal(q, query);
-        return data;
-      },
-    },
-    { quote: async (base, target) => ({ base, target, rate: 1300.5 }) },
+  const controller = new LedgerController(
+    { findAll: async () => [
+      {id:'income',type:'income',amount:1,description:'coffee',date:'2026-09-01',category:'Food'},
+      {id:'expense',type:'expense',amount:0.5,description:'coffee',date:'2026-09-02',category:'Food'},
+      {id:'other',type:'expense',amount:100,description:'tea',date:'2026-09-02',category:'Food'},
+    ] },
+    { quote: async (base, target) => { assert.equal(base, 'PHP'); return {base,target,rate:1300.5}; } },
   );
-  const result = await controller.convertedReport("workspace", query);
+  const result = await controller.converted(query);
   assert.equal(result.summary.incomeMinor, 1301);
   assert.equal(result.summary.expenseMinor, 650);
   assert.equal(result.summary.balanceMinor, 651);
   let fetched = false;
-  const denied = new WorkspacesController(
+  const denied = new LedgerController(
     {
-      get: async () => {
+      findAll: async () => {
         throw new Error("denied");
       },
     },
@@ -129,6 +121,6 @@ test("converted reports authorize before accessing rates and preserve filtered s
       },
     },
   );
-  await assert.rejects(denied.convertedReport("private", query));
+  await assert.rejects(denied.converted(query));
   assert.equal(fetched, false);
 });

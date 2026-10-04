@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { money } from "@/lib/format";
-import type { TransactionPage, Transaction, Workspace } from "@/lib/types";
+import type { TransactionPage, Transaction } from "@/lib/types";
 import { Icon } from "./icon";
 export function Summary({
   data,
@@ -49,11 +49,9 @@ export function Summary({
 }
 export function TransactionTable({
   items,
-  workspaceId,
   currency,
 }: {
   items: Transaction[];
-  workspaceId: string;
   currency: string;
 }) {
   return (
@@ -84,7 +82,7 @@ export function TransactionTable({
                     />
                   </span>
                   <div>
-                    <Link href={`/w/${workspaceId}/transactions/${item.id}`}>
+                    <Link href={`/transactions/${item.id}`}>
                       {item.description}
                     </Link>
                     <span>
@@ -115,7 +113,7 @@ export function TransactionTable({
               <td>
                 <Link
                   className="row-link"
-                  href={`/w/${workspaceId}/transactions/${item.id}`}
+                  href={`/transactions/${item.id}`}
                   aria-label={`Open ${item.description}`}
                 >
                   <Icon name="arrow" size={16} />
@@ -129,10 +127,8 @@ export function TransactionTable({
   );
 }
 export function EmptyTransactions({
-  workspace,
   filtered = false,
 }: {
-  workspace: Workspace;
   filtered?: boolean;
 }) {
   return (
@@ -150,14 +146,12 @@ export function EmptyTransactions({
           ? "Try another month or clear your search filters."
           : "Add an expense or income to start building a clearer picture of your finances."}
       </p>
-      {workspace.role !== "viewer" && (
-        <Link
+      <Link
           className="button secondary"
-          href={`/w/${workspace.id}/transactions/new`}
+          href={`/transactions/new`}
         >
           <Icon name="plus" size={17} /> Add transaction
         </Link>
-      )}
     </div>
   );
 }

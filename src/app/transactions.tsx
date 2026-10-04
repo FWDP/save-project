@@ -11,13 +11,12 @@ import {
 import { useRouter } from 'expo-router';
 import { FinancePage } from '@/components/layout/finance-page';
 import { MonthPicker } from '@/components/month-picker';
-import { useWorkspaceFinance } from '@/components/providers/workspace-finance-provider';
-import { WorkspaceScope } from '@/components/workspace-scope';
+import { useAccountFinance } from '@/components/providers/account-finance';
 import { filterTransactions } from '@/lib/transaction-filters';
 
 function TransactionsScreen() {
   const router = useRouter();
-  const { transactions, selectedMonth, isLoading, refresh, currency, workspace } = useWorkspaceFinance();
+  const { transactions, selectedMonth, isLoading, refresh, currency } = useAccountFinance();
   const [period, setPeriod] = useState<'all' | 'month'>('all');
   const [search, setSearch] = useState('');
   const [type, setType] = useState<'all' | 'expense' | 'income'>('all');
@@ -70,7 +69,7 @@ function TransactionsScreen() {
             </View>
             {period === 'month' ? <MonthPicker /> : null}
             <Pressable
-              disabled={workspace?.role === 'viewer'}
+
               style={styles.add}
               onPress={() => router.push('/expense-add')}
             >
@@ -155,7 +154,7 @@ function TransactionsScreen() {
               ? 'Loading transactions…'
               : search
                 ? 'No matches. Try a different search.'
-                : 'No transactions match the selected filters in this workspace.'}
+                : 'No transactions match the selected filters in your account.'}
           </Text>
         }
       />
@@ -207,4 +206,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default function ScopedTransactions() { return <WorkspaceScope><TransactionsScreen /></WorkspaceScope>; }
+export default function ScopedTransactions() { return <><TransactionsScreen /></>; }

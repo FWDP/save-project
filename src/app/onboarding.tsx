@@ -24,9 +24,9 @@ export default function OnboardingScreen() {
     try {
       const client = requireAuthClient();
       if (action === 'google') {
-        if (signup) setPendingPostAuthRedirect('/workspaces');
-        await signInGoogle(signup ? '/workspaces' : undefined);
-        if (signup) router.replace('/workspaces');
+        if (signup) setPendingPostAuthRedirect('/');
+        await signInGoogle(signup ? '/' : undefined);
+        if (signup) router.replace('/');
         return;
       }
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()))
@@ -35,7 +35,7 @@ export default function OnboardingScreen() {
         const { error } = await client.auth.signInWithOtp({
           email: email.trim(),
           options: {
-            emailRedirectTo: authRedirect(signup ? '/workspaces' : undefined),
+            emailRedirectTo: authRedirect(signup ? '/' : undefined),
           },
         });
         if (error) throw error;
@@ -44,12 +44,12 @@ export default function OnboardingScreen() {
       }
       if (signup && password.length < 12)
         throw new Error('Use a password with at least 12 characters.');
-      if (signup) setPendingPostAuthRedirect('/workspaces');
+      if (signup) setPendingPostAuthRedirect('/');
       const { data, error } = signup
         ? await client.auth.signUp({
             email: email.trim(),
             password,
-            options: { emailRedirectTo: authRedirect('/workspaces') },
+            options: { emailRedirectTo: authRedirect('/') },
           })
         : await client.auth.signInWithPassword({
             email: email.trim(),
@@ -59,7 +59,7 @@ export default function OnboardingScreen() {
         setPendingPostAuthRedirect(null);
         throw error;
       }
-      if (data.session) router.replace(signup ? '/workspaces' : '/');
+      if (data.session) router.replace(signup ? '/' : '/');
       else
         setMessage('Check your email to confirm your account on this device.');
     } catch (error) {

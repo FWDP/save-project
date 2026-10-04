@@ -1,5 +1,3 @@
-import { WorkspaceScope } from '@/components/workspace-scope';
-import { useWorkspaceFinance } from '@/components/providers/workspace-finance-provider';
 import { useRefreshFinance } from '@/components/providers/finance-data-provider';
 import { persistReceipt } from '@/lib/receipt-file';
 import { receiptDraftFields } from '@/lib/receipt-draft';
@@ -17,7 +15,7 @@ import {
   View,
 } from 'react-native';
 import { File } from 'expo-file-system';
-import { useRouter, Redirect } from 'expo-router';
+import { useRouter } from 'expo-router';
 
 import { FinancePage } from '@/components/layout/finance-page';
 import { saveTransactionDraft } from '@/lib/transaction-writes';
@@ -533,7 +531,4 @@ const styles = StyleSheet.create({
   submitText: { color: '#07111f', fontWeight: '800' },
 });
 
-export default function ScopedEntry() {
-  const { personal } = useWorkspaceFinance();
-  return <WorkspaceScope write>{personal ? <AddExpenseScreen /> : <Redirect href={{ pathname: '/workspaces', params: { add: '1' } }} />}</WorkspaceScope>;
-}
+export default function AccountPage() { return <AddExpenseScreen />; }

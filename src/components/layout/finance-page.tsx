@@ -1,5 +1,5 @@
-import { useWorkspaceFinance } from '@/components/providers/workspace-finance-provider';
-import { useRouter, useFocusEffect } from 'expo-router';
+import { useAccountFinance } from '@/components/providers/account-finance';
+import { useFocusEffect } from 'expo-router';
 import { type PropsWithChildren, useState, useCallback } from 'react';
 import {
   Pressable,
@@ -29,8 +29,7 @@ export function FinancePage({
   onRefresh?: () => Promise<void>;
   refreshing?: boolean;
 }>) {
-  const { refresh, workspace, isLoading, lastUpdatedAt, syncError } = useWorkspaceFinance();
-  const router = useRouter();
+  const { refresh, isLoading, lastUpdatedAt, syncError } = useAccountFinance();
   useFocusEffect(useCallback(() => { void refresh(); }, [refresh]));
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const updatedLabel = lastUpdatedAt
@@ -53,9 +52,6 @@ export function FinancePage({
         <View style={styles.headerText}>
           <Text style={styles.title}>{title}</Text>
           <Text style={styles.subtitle}>{subtitle}</Text>
-          <Pressable accessibilityRole="button" onPress={() => router.push('/workspaces')} style={{ paddingVertical: 8 }}>
-            <Text style={{ color: '#75b6ff' }}>{workspace?.name ?? 'Choose workspace'}{workspace ? ` · ${workspace.currency}` : ''} ⌄</Text>
-          </Pressable>
           {showSync && (
             <Text style={[styles.sync, syncError && styles.syncError]}>
               {isLoading

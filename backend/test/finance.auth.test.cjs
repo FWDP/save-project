@@ -13,6 +13,8 @@ const context = (path, authorization) => ({
 
 test('private finance routes require authentication', async () => {
   for (const route of [
+    '/ledger/transactions',
+    '/ledger/reports/converted',
     '/transactions',
     '/budgets',
     '/categories',

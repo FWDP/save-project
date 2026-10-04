@@ -1,4 +1,3 @@
-import { WorkspaceScope } from '@/components/workspace-scope';
 import { useEffect, useRef, useState } from 'react';
 import { Alert, Pressable, Text, TextInput, View } from 'react-native';
 import {
@@ -11,11 +10,11 @@ import { budgetProgress, budgetSpent, monthTransactions, totalBudgetSpent } from
 import { prepareMonthlyBudget } from '@/lib/budget-form';
 import { getAuthUser } from '@/lib/auth';
 import { useFinanceStore } from '@/store/finance-store';
-import { useWorkspaceFinance } from '@/components/providers/workspace-finance-provider';
+import { useAccountFinance } from '@/components/providers/account-finance';
 const money = (n: number, currency: string) =>
   new Intl.NumberFormat('en-PH', { style: 'currency', currency }).format(n);
 function BudgetsScreen() {
-  const { budgets, transactions, categories, selectedMonth, isLoading, currency, workspace, refresh } = useWorkspaceFinance();
+  const { budgets, transactions, categories, selectedMonth, isLoading, currency, refresh } = useAccountFinance();
   const setBudgets = useFinanceStore(state => state.setBudgets);
   const [editing, setEditing] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
@@ -26,7 +25,7 @@ function BudgetsScreen() {
   const mutating = useRef(false);
   const mounted = useRef(true);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
-  const writable = workspace?.role !== 'viewer';
+  const writable = true;
   const expenseCategories = categories.filter(item => item.type === 'expense');
   const save = async () => {
     if (mutating.current || !writable) return;
@@ -298,4 +297,4 @@ function BudgetsScreen() {
   );
 }
 
-export default function ScopedPage() { return <WorkspaceScope personalOnly><BudgetsScreen /></WorkspaceScope>; }
+export default function ScopedPage() { return <><BudgetsScreen /></>; }

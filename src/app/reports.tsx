@@ -4,10 +4,9 @@ import { useMemo, useState } from 'react';
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { FinancePage } from '@/components/layout/finance-page';
-import { workspaceTransactionsCsv } from '@/lib/workspace-records';
+import { accountTransactionsCsv } from '@/lib/account-records';
 import type { ApiTransaction } from '@/lib/api';
-import { useWorkspaceFinance } from '@/components/providers/workspace-finance-provider';
-import { WorkspaceScope } from '@/components/workspace-scope';
+import { useAccountFinance } from '@/components/providers/account-finance';
 
 type PeriodKey = 'month' | 'lastMonth' | 'threeMonths' | 'sixMonths' | 'year';
 const PERIODS: { key: PeriodKey; label: string }[] = [
@@ -108,9 +107,9 @@ function stats(items: ApiTransaction[]) {
 }
 
 function ReportsScreen() {
-  const { currency, workspace, isLoading, syncError } = useWorkspaceFinance();
+  const { currency, isLoading, syncError } = useAccountFinance();
   const money = (value: number) => new Intl.NumberFormat('en-PH', { style: 'currency', currency }).format(value);
-  const { transactions, selectedMonth } = useWorkspaceFinance();
+  const { transactions, selectedMonth } = useAccountFinance();
   const [mode, setMode] = useState<'single' | 'compare'>('single');
   const [periodA, setPeriodA] = useState<PeriodKey>('month');
   const [periodB, setPeriodB] = useState<PeriodKey>('lastMonth');
@@ -137,8 +136,8 @@ function ReportsScreen() {
   );
 
   const exportCsv = async () => {
-    if (!workspace || isLoading || syncError) return;
-    const csv = workspaceTransactionsCsv(transactions.filter(item => inPeriod(item, periodA, selectedMonth)), workspace);
+    if (isLoading || syncError) return;
+    const csv = accountTransactionsCsv(transactions.filter(item => inPeriod(item, periodA, selectedMonth)), currency);
 
     try {
       await exportFile(`save-report-${periodA}.csv`, csv, 'text/csv');
@@ -324,7 +323,7 @@ function CompareSummary({
   a: ReturnType<typeof stats>;
   b: ReturnType<typeof stats>;
 }) {
-  const { currency } = useWorkspaceFinance();
+  const { currency } = useAccountFinance();
   const money = (value: number) => new Intl.NumberFormat('en-PH', { style: 'currency', currency }).format(value);
   const rows: [string, number, number, (n: number) => string][] = [
     ['Total Spent', a.total, b.total, money],
@@ -452,4 +451,4 @@ const styles = StyleSheet.create({
   negative: { color: '#f05c70' },
 });
 
-export default function ScopedReports() { return <WorkspaceScope><ReportsScreen /></WorkspaceScope>; }
+export default function ScopedReports() { return <><ReportsScreen /></>; }

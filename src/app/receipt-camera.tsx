@@ -1,5 +1,3 @@
-import { WorkspaceScope } from '@/components/workspace-scope';
-import { useWorkspaceFinance } from '@/components/providers/workspace-finance-provider';
 import { persistReceipt } from '@/lib/receipt-file';
 import { receiptDraftFields } from '@/lib/receipt-draft';
 import { scanReceiptWithAi } from '@/lib/api';
@@ -15,7 +13,7 @@ import {
 } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { Image } from 'expo-image';
-import { useRouter, Redirect } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useExpenseDraftStore } from '@/store/expense-draft-store';
@@ -216,7 +214,4 @@ const styles = StyleSheet.create({
   cancelText: { color: '#aeb9cb' },
 });
 
-export default function ScopedEntry() {
-  const { personal } = useWorkspaceFinance();
-  return <WorkspaceScope write>{personal ? <ReceiptCameraScreen /> : <Redirect href={{ pathname: '/workspaces', params: { add: '1' } }} />}</WorkspaceScope>;
-}
+export default function AccountPage() { return <ReceiptCameraScreen />; }

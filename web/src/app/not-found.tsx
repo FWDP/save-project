@@ -6,7 +6,7 @@ export default function NotFound() {
       <h1>This page isn’t available.</h1>
       <p>It may have moved, or your account may not have access.</p>
       <Link className="button primary" href="/">
-        Back to my workspace
+        Back to my finances
       </Link>
     </main>
   );

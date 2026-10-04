@@ -1,14 +1,13 @@
 "use client";
 import { useRef, useActionState, useState } from "react";
 import Link from "next/link";
-import { saveTransaction, removeTransaction } from "@/app/workspaces/actions";
+import { saveTransaction, removeTransaction } from "@/app/(finance)/transaction-actions";
 import type { Transaction, CategoryOption } from "@/lib/types";
 import { currencyDigits, minorToDecimal } from "@/lib/currency";
 import { Icon } from "./icon";
 import { ReceiptScanner } from "./receipt-scanner";
 
 export function TransactionForm({
-  workspaceId,
   mutationId,
   currency,
   categories = [],
@@ -16,7 +15,6 @@ export function TransactionForm({
   item,
   readOnly = false,
 }: {
-  workspaceId: string;
   mutationId: string;
   currency: string;
   categories: CategoryOption[];
@@ -30,7 +28,7 @@ export function TransactionForm({
 
   return (
     <form ref={formRef} action={action} className="record-form">
-      <input type="hidden" name="workspaceId" value={workspaceId} />
+
       <input type="hidden" name="clientMutationId" value={mutationId} />
       {item && (
         <>
@@ -149,7 +147,7 @@ export function TransactionForm({
       <div className="form-actions">
         <Link
           className="button secondary"
-          href={`/w/${workspaceId}/transactions`}
+          href={`/transactions`}
         >
           {readOnly ? "Back to transactions" : "Cancel"}
         </Link>
@@ -170,10 +168,10 @@ export function DeleteTransaction({ item }: { item: Transaction }) {
     <details className="delete-record">
       <summary>Delete this transaction</summary>
       <form action={action}>
-        <input type="hidden" name="workspaceId" value={item.workspaceId} />
+
         <input type="hidden" name="transactionId" value={item.id} />
         <input type="hidden" name="revision" value={item.revision} />
-        <p>This permanently removes the transaction from this workspace.</p>
+        <p>This permanently removes the transaction from your account.</p>
         <label className="confirm-check">
           <input name="confirmed" type="checkbox" value="yes" required /> I want
           to delete this record.
