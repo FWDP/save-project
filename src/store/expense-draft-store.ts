@@ -8,12 +8,11 @@ export type ExpenseDraft = {
   category: string;
   description: string;
   merchant: string;
-  tags: string;
+  tin: string;
   recurring: boolean;
   receiptUri?: string;
   receiptMimeType?: string;
   receiptStatus?: string;
-  customFields: { label: string; value: string }[];
 };
 
 const initialDraft = (): ExpenseDraft => ({
@@ -23,9 +22,8 @@ const initialDraft = (): ExpenseDraft => ({
   category: '',
   description: '',
   merchant: '',
-  tags: '',
+  tin: '',
   recurring: false,
-  customFields: [],
 });
 
 type ExpenseDraftStore = {

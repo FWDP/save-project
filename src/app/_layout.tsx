@@ -1,16 +1,17 @@
+import { authClient, consumePostAuthRedirect, getAuthUser } from '@/lib/auth';
+import { useExpenseDraftStore } from '@/store/expense-draft-store';
+import { useFinanceStore } from '@/store/finance-store';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
-  DarkTheme,
-  DefaultTheme,
-  Stack,
-  ThemeProvider,
-  useRouter,
+    DarkTheme,
+    DefaultTheme,
+    Stack,
+    ThemeProvider,
+    useRouter,
 } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
-import { useColorScheme, View, ActivityIndicator } from 'react-native';
 import { useEffect, useRef, useState } from 'react';
-import { authClient, consumePostAuthRedirect, getAuthUser } from '@/lib/auth';
-import { useFinanceStore } from '@/store/finance-store';
-import { useExpenseDraftStore } from '@/store/expense-draft-store';
+import { ActivityIndicator, Appearance, useColorScheme, View } from 'react-native';
 
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
 import { FinanceDataProvider } from '@/components/providers/finance-data-provider';
@@ -22,6 +23,11 @@ export default function TabLayout() {
   const colorScheme = useColorScheme();
   const currentAccount = useRef<string | null | undefined>(undefined);
   const [account, setAccount] = useState<string | null | undefined>(undefined);
+  useEffect(() => {
+    void AsyncStorage.getItem('save.dark-mode').then((value) => {
+      if (value !== null) Appearance.setColorScheme(value === 'true' ? 'dark' : 'light');
+    });
+  }, []);
   useEffect(() => {
     if (account) {
       const next = consumePostAuthRedirect();
@@ -84,7 +90,6 @@ export default function TabLayout() {
             <Stack.Screen name="transaction-detail" />
             <Stack.Screen name="reports" />
             <Stack.Screen name="categories" />
-            <Stack.Screen name="custom-fields" />
             <Stack.Screen name="stellar" />
             <Stack.Screen name="receipt" />
             <Stack.Screen name="expense-add" />

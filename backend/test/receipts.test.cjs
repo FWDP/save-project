@@ -43,13 +43,14 @@ test('ReceiptsService successfully parses valid receipt from Gemini response', a
   const service = new ReceiptsService(mockConfig({ GEMINI_API_KEY: 'test-key' }));
 
   service.aiClient = liveResult({
-    merchant: 'Starbucks Coffee', amount: 250.75, currency: 'PHP',
+    merchant: 'Starbucks Coffee', tin: '123-456-789-000', amount: 250.75, currency: 'PHP',
     date: '2026-09-25', category: 'Food & Dining', tax: 26.87,
     notes: 'Caramel Macchiato, Croissant', confidence: 0.98,
   });
 
   const result = await service.scanReceipt('dummyBase64Data', 'image/jpeg', ['Food & Dining', 'Transportation']);
   assert.equal(result.merchant, 'Starbucks Coffee');
+  assert.equal(result.tin, '123-456-789-000');
   assert.equal(result.amount, 250.75);
   assert.equal(result.currency, 'PHP');
   assert.equal(result.date, '2026-09-25');

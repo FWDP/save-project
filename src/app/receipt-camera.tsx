@@ -1,19 +1,19 @@
-import { persistReceipt } from '@/lib/receipt-file';
-import { receiptDraftFields } from '@/lib/receipt-draft';
 import { scanReceiptWithAi } from '@/lib/api';
-import { useRef, useState } from 'react';
-import {
-  ActivityIndicator,
-  Alert,
-  Linking,
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import { receiptDraftFields } from '@/lib/receipt-draft';
+import { persistReceipt } from '@/lib/receipt-file';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
+import { useRef, useState } from 'react';
+import {
+    ActivityIndicator,
+    Alert,
+    Linking,
+    Pressable,
+    StyleSheet,
+    Text,
+    View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useExpenseDraftStore } from '@/store/expense-draft-store';
@@ -33,7 +33,7 @@ function ReceiptCameraScreen() {
     if (!camera.current || capturing) return;
     setCapturing(true);
     try {
-      const photo = await camera.current.takePictureAsync({ quality: 0.8 });
+      const photo = await camera.current.takePictureAsync({ quality: 0.8, shutterSound: false });
       if (photo?.uri) setPhotoUri(photo.uri);
     } catch {
       Alert.alert(

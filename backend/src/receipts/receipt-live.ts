@@ -1,5 +1,5 @@
-import { BadRequestException, ServiceUnavailableException } from '@nestjs/common';
 import { GoogleGenAI, Modality, Session, Type } from '@google/genai';
+import { BadRequestException, ServiceUnavailableException } from '@nestjs/common';
 
 const receiptFunction = {
   name: 'extract_receipt',
@@ -8,6 +8,7 @@ const receiptFunction = {
     type: Type.OBJECT,
     properties: {
       merchant: { type: Type.STRING },
+      tin: { type: Type.STRING, description: 'Printed taxpayer identification number (TIN), if present. Do not confuse with tax amount.' },
       amount: { type: Type.NUMBER },
       currency: { type: Type.STRING },
       date: { type: Type.STRING, description: 'YYYY-MM-DD' },

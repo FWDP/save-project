@@ -1,20 +1,21 @@
+import { GoogleGenAI } from '@google/genai';
 import {
-  BadRequestException,
-  Injectable,
-  Logger,
-  ServiceUnavailableException,
+    BadRequestException,
+    Injectable,
+    Logger,
+    ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { GoogleGenAI } from '@google/genai';
 
 import { z } from 'zod';
 import { readReceiptLive } from './receipt-live';
 
-import { ParsedReceiptResult } from './receipts.dto';
 import { BUILTIN_CATEGORIES } from '../categories/category-catalog';
+import { ParsedReceiptResult } from './receipts.dto';
 
 const receiptResult = z.object({
   merchant: z.string().trim().min(1).max(120),
+  tin: z.string().trim().max(40).optional(),
   amount: z.number().finite().positive().max(Number.MAX_SAFE_INTEGER / 100),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine((date) => {
     const parsed = new Date(`${date}T00:00:00Z`);
@@ -83,10 +84,11 @@ export class ReceiptsService {
       'Rules:',
       '1. amount must be a positive number representing the final total amount paid.',
       '2. merchant must be the primary business, store, or vendor name.',
-      '3. date must be formatted strictly as YYYY-MM-DD. If year is missing from the receipt, assume current year.',
-      '4. currency should be the 3-letter currency code if indicated (e.g., PHP, USD, EUR, JPY).',
-      '5. tax should be the tax or VAT amount if explicitly itemized, otherwise omit or 0.',
-      '6. notes should contain a short summary of purchased items or service description.',
+      '3. tin should be the merchant taxpayer identification number (TIN) printed on the receipt, if clearly present. Do not use the tax/VAT amount; omit if unreadable or absent.',
+      '4. date must be formatted strictly as YYYY-MM-DD. If year is missing from the receipt, assume current year.',
+      '5. currency should be the 3-letter currency code if indicated (e.g., PHP, USD, EUR, JPY).',
+      '6. tax should be the tax or VAT amount if explicitly itemized, otherwise omit or 0.',
+      '7. notes should contain a short summary of purchased items or service description.',
     ].join('\n');
 
     try {
@@ -105,6 +107,7 @@ export class ReceiptsService {
 
       return {
         merchant: parsed.merchant?.trim() || 'Unknown Merchant',
+        tin: parsed.tin?.trim() || undefined,
         amount: Math.round(amount * 100) / 100,
         currency: parsed.currency?.trim()?.toUpperCase() || undefined,
         date: parsed.date || today,

@@ -1,19 +1,20 @@
-import { useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import { useRouter } from 'expo-router';
 import { FinancePage } from '@/components/layout/finance-page';
 import {
-  authConfigured,
-  authRedirect,
-  requireAuthClient,
-  setPendingPostAuthRedirect,
-  signInGoogle,
+    authConfigured,
+    authRedirect,
+    requireAuthClient,
+    setPendingPostAuthRedirect,
+    signInGoogle,
 } from '@/lib/auth';
+import { useRouter } from 'expo-router';
+import { useState } from 'react';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 export default function OnboardingScreen() {
   const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [signup, setSignup] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
@@ -102,12 +103,20 @@ export default function OnboardingScreen() {
         <TextInput
           accessibilityLabel="Password"
           autoCapitalize="none"
-          secureTextEntry
+          secureTextEntry={!showPassword}
           autoComplete={signup ? 'new-password' : 'current-password'}
           value={password}
           onChangeText={setPassword}
           style={styles.input}
         />
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}
+          onPress={() => setShowPassword((visible) => !visible)}
+          style={styles.passwordToggle}
+        >
+          <Text style={styles.link}>{showPassword ? 'Hide password' : 'Show password'}</Text>
+        </Pressable>
         <Pressable
           disabled={busy || !authConfigured}
           style={styles.primary}
@@ -173,5 +182,6 @@ const styles = StyleSheet.create({
   primaryText: { color: '#07111f', fontWeight: '800', fontSize: 16 },
   secondary: { padding: 14, alignItems: 'center', minHeight: 48 },
   link: { color: '#75b6ff', fontSize: 14 },
+  passwordToggle: { alignSelf: 'flex-end', paddingVertical: 6, paddingHorizontal: 4 },
   message: { color: '#e9bd69', fontSize: 14, lineHeight: 21 },
 });

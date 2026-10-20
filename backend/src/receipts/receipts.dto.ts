@@ -34,6 +34,7 @@ export class ScanReceiptDto {
 
 export interface ParsedReceiptResult {
   merchant: string;
+  tin?: string;
   amount: number;
   currency?: string;
   date: string;

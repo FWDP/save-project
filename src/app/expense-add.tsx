@@ -1,21 +1,21 @@
-import { useRefreshFinance } from '@/components/providers/finance-data-provider';
-import { persistReceipt } from '@/lib/receipt-file';
-import { receiptDraftFields } from '@/lib/receipt-draft';
-import { scanReceiptWithAi } from '@/lib/api';
 import { DateField } from '@/components/date-field';
+import { useRefreshFinance } from '@/components/providers/finance-data-provider';
+import { scanReceiptWithAi } from '@/lib/api';
 import { validDate } from '@/lib/finance';
-import { useMemo, useState } from 'react';
-import {
-  ActivityIndicator,
-  Pressable,
-  StyleSheet,
-  Switch,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { receiptDraftFields } from '@/lib/receipt-draft';
+import { persistReceipt } from '@/lib/receipt-file';
 import { File } from 'expo-file-system';
 import { useRouter } from 'expo-router';
+import { useMemo, useState } from 'react';
+import {
+    ActivityIndicator,
+    Pressable,
+    StyleSheet,
+    Switch,
+    Text,
+    TextInput,
+    View,
+} from 'react-native';
 
 import { FinancePage } from '@/components/layout/finance-page';
 import { saveTransactionDraft } from '@/lib/transaction-writes';
@@ -63,16 +63,6 @@ function AddExpenseScreen() {
 
   const setType = (type: 'expense' | 'income') =>
     patchDraft({ type, category: '' });
-  const addField = () =>
-    patchDraft({
-      customFields: [...draft.customFields, { label: '', value: '' }],
-    });
-  const updateField = (index: number, key: 'label' | 'value', value: string) =>
-    patchDraft({
-      customFields: draft.customFields.map((field, fieldIndex) =>
-        fieldIndex === index ? { ...field, [key]: value } : field,
-      ),
-    });
   const upload = async () => {
     setMessage(null);
     setAnalyzing(true);
@@ -107,11 +97,6 @@ function AddExpenseScreen() {
     }
     setSaving(true);
     try {
-      const customFields = Object.fromEntries(
-        draft.customFields
-          .filter((field) => field.label.trim())
-          .map((field) => [field.label.trim(), field.value.trim()]),
-      );
       const created = await saveTransactionDraft({
         userId: '',
         type: draft.type,
@@ -121,13 +106,9 @@ function AddExpenseScreen() {
         date: draft.date,
         status: 'approved',
         merchant: draft.merchant.trim() || undefined,
-        tags: draft.tags
-          .split(',')
-          .map((tag) => tag.trim())
-          .filter(Boolean),
         recurring: draft.type === 'expense' && draft.recurring,
         receiptUri: draft.receiptUri,
-        customFields,
+        customFields: draft.tin.trim() ? { TIN: draft.tin.trim() } : undefined,
       });
       const next = [created, ...useFinanceStore.getState().transactions];
       setTransactions(next);
@@ -170,6 +151,38 @@ function AddExpenseScreen() {
           <Text style={styles.segmentText}>Income</Text>
         </Pressable>
       </View>
+      <View>
+        <Text style={styles.label}>
+          Receipt <Text style={styles.muted}>(AI Smart Scan powered by Gemini)</Text>
+        </Text>
+        <View style={styles.receiptRow}>
+          <Pressable
+            disabled={analyzing}
+            style={[styles.receiptButton, styles.receiptPrimary]}
+            onPress={() => router.push('/receipt-camera')}
+          >
+            <Text style={styles.receiptIcon}>▣</Text>
+            <Text style={styles.receiptTitle}>Take Photo</Text>
+            <Text style={styles.receiptMeta}>Use camera</Text>
+          </Pressable>
+          <Pressable disabled={analyzing} style={styles.receiptButton} onPress={upload}>
+            <Text style={styles.receiptIcon}>⇧</Text>
+            <Text style={styles.receiptTitle}>Upload File</Text>
+            <Text style={styles.receiptMeta}>JPEG, PNG, WebP</Text>
+          </Pressable>
+        </View>
+        {analyzing ? (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 10 }}>
+            <ActivityIndicator size="small" color="#75b6ff" />
+            <Text style={{ color: '#75b6ff', fontSize: 12 }}>Analyzing receipt with Gemini Live…</Text>
+          </View>
+        ) : null}
+        {aiStatus ? (
+          <Text style={[styles.attachment, { color: aiStatus.startsWith('✓') ? '#21c985' : '#75b6ff' }]}>
+            {aiStatus}
+          </Text>
+        ) : null}
+      </View>
       <View style={styles.twoColumns}>
         <DateField
           label="Date *"
@@ -194,12 +207,17 @@ function AddExpenseScreen() {
             style={[styles.inputText, { flex: 1 }]}
             value={draft.category}
             maxLength={80}
-            placeholder="Category / Subcategory"
+            placeholder="Category"
             placeholderTextColor="#65738c"
             onChangeText={(category) => patchDraft({ category })}
           />
-          <Pressable accessibilityLabel="Choose category" onPress={() => setShowCategories(value => !value)}>
-            <Text style={styles.inputText}>⌄</Text>
+          <Pressable
+            accessibilityLabel="Choose category"
+            hitSlop={8}
+            style={styles.categoryArrowButton}
+            onPress={() => setShowCategories(value => !value)}
+          >
+            <Text style={styles.categoryArrow}>⌄</Text>
           </Pressable>
         </View>
         <Pressable
@@ -244,41 +262,12 @@ function AddExpenseScreen() {
         onChangeText={(merchant) => patchDraft({ merchant })}
         placeholder="e.g. Jollibee, SM Mall, Lazada…"
       />
-      <View style={styles.details}>
-        <Text style={styles.legend}>Personal Details</Text>
-        {draft.customFields.length ? (
-          draft.customFields.map((field, index) => (
-            <View key={index} style={styles.twoColumns}>
-              <Field
-                label="Field name"
-                value={field.label}
-                onChangeText={(value) => updateField(index, 'label', value)}
-                placeholder="Project"
-              />
-              <Field
-                label="Value"
-                value={field.value}
-                onChangeText={(value) => updateField(index, 'value', value)}
-                placeholder="Value"
-              />
-            </View>
-          ))
-        ) : (
-          <Text style={styles.help}>
-            No extra fields yet. Add fields like “Project”, “Client”, or “Tax
-            Rate”.
-          </Text>
-        )}
-        <Pressable style={styles.dashedButton} onPress={addField}>
-          <Text style={styles.dashedText}>＋ Add Custom Field</Text>
-        </Pressable>
-      </View>
       <Field
-        label="Tags"
-        value={draft.tags}
-        onChangeText={(tags) => patchDraft({ tags })}
-        placeholder="Add comma-separated tags…"
-        help="Commas separate tags"
+        label="TIN"
+        maxLength={40}
+        value={draft.tin}
+        onChangeText={(tin) => patchDraft({ tin })}
+        placeholder="Taxpayer identification number"
       />
       {draft.type === 'expense' ? (
         <View style={styles.switchRow}>
@@ -291,50 +280,11 @@ function AddExpenseScreen() {
         </View>
       ) : null}
       <View>
-        <Text style={styles.label}>
-          Receipt{' '}
-          <Text style={styles.muted}>
-            (AI Smart Scan powered by Gemini)
-          </Text>
-        </Text>
-        <View style={styles.receiptRow}>
-          <Pressable
-            disabled={analyzing}
-            style={[styles.receiptButton, styles.receiptPrimary]}
-            onPress={() => router.push('/receipt-camera')}
-          >
-            <Text style={styles.receiptIcon}>▣</Text>
-            <Text style={styles.receiptTitle}>Take Photo</Text>
-            <Text style={styles.receiptMeta}>Use camera</Text>
-          </Pressable>
-          <Pressable
-            disabled={analyzing}
-            style={styles.receiptButton}
-            onPress={upload}
-          >
-            <Text style={styles.receiptIcon}>⇧</Text>
-            <Text style={styles.receiptTitle}>Upload File</Text>
-            <Text style={styles.receiptMeta}>JPEG, PNG, WebP</Text>
-          </Pressable>
-        </View>
         {draft.receiptUri && !analyzing && !aiStatus?.startsWith('✓') ? (
           <Pressable disabled={saving} style={styles.dashedButton}
             onPress={() => void processReceiptWithAi(draft.receiptUri!, draft.receiptMimeType)}>
             <Text style={styles.dashedText}>Retry receipt scan</Text>
           </Pressable>
-        ) : null}
-        {analyzing ? (
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 10 }}>
-            <ActivityIndicator size="small" color="#75b6ff" />
-            <Text style={{ color: '#75b6ff', fontSize: 12 }}>
-              Analyzing receipt with Gemini Live…
-            </Text>
-          </View>
-        ) : null}
-        {aiStatus ? (
-          <Text style={[styles.attachment, { color: aiStatus.startsWith('✓') ? '#21c985' : '#75b6ff' }]}>
-            {aiStatus}
-          </Text>
         ) : null}
         {draft.receiptUri && !aiStatus?.startsWith('✓') ? (
           <Text numberOfLines={1} style={styles.attachment}>
@@ -436,6 +386,13 @@ const styles = StyleSheet.create({
     borderColor: '#1b2941',
     borderRadius: 9,
   },
+  categoryArrowButton: {
+    width: 48,
+    height: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  categoryArrow: { color: '#edf2fa', fontSize: 27, lineHeight: 30, fontWeight: '700' },
   newButton: {
     paddingHorizontal: 13,
     justifyContent: 'center',

@@ -1,37 +1,41 @@
-import { useEffect, useState } from 'react';
-import { Alert, Pressable, Text, View } from 'react-native';
-import { File } from 'expo-file-system';
-import { CryptoDigestAlgorithm, digestStringAsync } from 'expo-crypto';
 import {
-  FinancePage,
-  financePageStyles as styles,
+    FinancePage,
+    financePageStyles as styles,
 } from '@/components/layout/finance-page';
+import { useRefreshFinance } from '@/components/providers/finance-data-provider';
 import {
-  createBudget,
-  createCategory,
-  createTransaction,
-  deleteTransaction,
-  fetchBudgets,
-  fetchCategories,
-  fetchSavingsGoals,
-  type ApiBudget,
-  type ApiCategory,
-  type ApiTransaction,
+    createBudget,
+    createCategory,
+    createTransaction,
+    deleteTransaction,
+    fetchBudgets,
+    fetchCategories,
+    fetchSavingsGoals,
+    type ApiBudget,
+    type ApiCategory,
+    type ApiTransaction,
 } from '@/lib/api';
 import { clearAuthUser, getAuthUser, type AuthUser } from '@/lib/auth';
-import { useFinanceStore } from '@/store/finance-store';
 import { exportFile } from '@/lib/export-file';
-import {
-  csvRows,
-  importPreview,
-  transactionFingerprint,
-  transactionsCsv,
-  type ImportRow,
-} from '@/lib/transfers';
+import { exportPdf } from '@/lib/export-pdf';
 import { validDate } from '@/lib/finance';
-import { useRefreshFinance } from '@/components/providers/finance-data-provider';
+import {
+    csvRows,
+    importPreview,
+    transactionFingerprint,
+    transactionsCsv,
+    type ImportRow,
+} from '@/lib/transfers';
+import { useFinanceStore } from '@/store/finance-store';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { CryptoDigestAlgorithm, digestStringAsync } from 'expo-crypto';
+import { File } from 'expo-file-system';
+import { useEffect, useState } from 'react';
+import { Alert, Appearance, Pressable, Switch, Text, View, useColorScheme } from 'react-native';
 
 function SettingsScreen() {
+  const systemColorScheme = useColorScheme();
+  const [darkMode, setDarkMode] = useState(systemColorScheme === 'dark');
   const [user, setUser] = useState<AuthUser | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
@@ -45,6 +49,14 @@ function SettingsScreen() {
   const refresh = useRefreshFinance();
   useEffect(() => {
     void getAuthUser().then(setUser);
+  }, []);
+  useEffect(() => {
+    void AsyncStorage.getItem('save.dark-mode').then((value) => {
+      if (value === null) return;
+      const enabled = value === 'true';
+      setDarkMode(enabled);
+      Appearance.setColorScheme(enabled ? 'dark' : 'light');
+    });
   }, []);
   const perform = async (fn: () => Promise<void>) => {
     if (busy) return;
@@ -262,6 +274,21 @@ function SettingsScreen() {
         <Text style={styles.rowMeta}>{user?.email}</Text>
       </View>
       <View style={styles.card}>
+        <Text style={styles.cardTitle}>Appearance</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+          <Text style={styles.rowTitle}>Dark mode</Text>
+          <Switch
+            accessibilityLabel="Dark mode"
+            value={darkMode}
+            onValueChange={(enabled) => {
+              setDarkMode(enabled);
+              Appearance.setColorScheme(enabled ? 'dark' : 'light');
+              void AsyncStorage.setItem('save.dark-mode', String(enabled));
+            }}
+          />
+        </View>
+      </View>
+      <View style={styles.card}>
         <Text style={styles.cardTitle}>Currency</Text>
         <Text style={styles.rowTitle}>PHP · Philippine Peso</Text>
         <Text style={styles.rowMeta}>
@@ -271,6 +298,18 @@ function SettingsScreen() {
       </View>
       <View style={styles.card}>
         <Text style={styles.cardTitle}>Export records</Text>
+        <Button
+          disabled={busy}
+          label="Export transactions PDF"
+          onPress={() => perform(() => exportPdf(
+            `save-transactions-${Date.now()}.pdf`,
+            'SAVE Transactions',
+            transactions.map((item) => [
+              `${item.date} · ${item.type.toUpperCase()} · ${item.description}`,
+              `${item.category} · ${item.merchant || 'No merchant'} · ₱${item.amount.toLocaleString('en-PH')}${item.customFields?.TIN ? ` · TIN ${item.customFields.TIN}` : ''}`,
+            ]),
+          ))}
+        />
         <Button
           disabled={busy}
           label="Export transactions CSV"

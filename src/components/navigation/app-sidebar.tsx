@@ -12,7 +12,6 @@ const menuItems: { label: string; href: Href; icon: string }[] = [
   { label: 'Budgets', href: '/budgets', icon: '◔' },
   { label: 'Savings', href: '/savings', icon: '◈' },
   { label: 'Categories', href: '/categories', icon: '◇' },
-  { label: 'Custom Fields', href: '/custom-fields', icon: '☷' },
   { label: 'Reports', href: '/reports', icon: '↗' },
   { label: 'Settings', href: '/settings', icon: '⚙' },
 ];

@@ -115,9 +115,9 @@ test('receipt scans upload native files as authenticated multipart and surface A
 
 test('receipt results fill editable fields with Web limits and retain transaction type and personal details', () => {
   const { receiptDraftFields } = load(path.join(root, 'receipt-draft.ts'));
-  const receipt = { merchant: '  Shop  ', amount: 125.5, date: '2026-10-02', currency: 'PHP', category: 'food / lunch', notes: 'Lunch items' };
+  const receipt = { merchant: '  Shop  ', tin: '  123-456  ', amount: 125.5, date: '2026-10-02', currency: 'PHP', category: 'food / lunch', notes: 'Lunch items' };
   const fields = receiptDraftFields(receipt, [{ name: 'Food / Lunch' }]);
-  assert.deepEqual(fields, { merchant: 'Shop', amount: '125.5', date: '2026-10-02', category: 'Food / Lunch', description: 'Lunch items' });
+  assert.deepEqual(fields, { merchant: 'Shop', tin: '123-456', amount: '125.5', date: '2026-10-02', category: 'Food / Lunch', description: 'Lunch items' });
   const draft = { type: 'income', tags: 'work', customFields: [{ label: 'Project', value: 'SAVE' }], receiptUri: 'file:///receipt.jpg', amount: '', date: '2026-10-03' };
   const filled = { ...draft, ...fields };
   assert.equal(filled.type, 'income');

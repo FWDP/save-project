@@ -1,13 +1,11 @@
-import { useRouter } from 'expo-router';
-import { budgetSpent, totalBudgetSpent, merchantTotals } from '@/lib/finance';
+import { budgetSpent, merchantTotals, totalBudgetSpent } from '@/lib/finance';
 import { currencyDigits } from '@/lib/money';
 import { useMemo } from 'react';
 import {
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-  useWindowDimensions,
+    StyleSheet,
+    Text,
+    View,
+    useWindowDimensions
 } from 'react-native';
 
 import type { ApiBudget, ApiTransaction } from '@/lib/api';
@@ -23,13 +21,11 @@ type SaveDashboardProps = {
   accountName?: string;
   currency?: string;
   showBudgets?: boolean;
-  onTransactionPress?: (id: string) => void;
   transactions: ApiTransaction[];
   budgets: ApiBudget[];
   totals: DashboardTotals;
   allExpenses: { total: number; count: number; pending: number; rejected: number };
   transactionCounts: { income: number; expense: number };
-  loading: boolean;
 };
 
 const palette = {
@@ -113,15 +109,12 @@ export function SaveDashboard({
   accountName = 'Personal finances',
   currency = 'PHP',
   showBudgets = true,
-  onTransactionPress,
   budgets,
   transactions,
   totals,
   allExpenses,
   transactionCounts,
-  loading,
 }: SaveDashboardProps) {
-  const router = useRouter();
   const formatMoney = (value: number) => new Intl.NumberFormat('en-PH', { style: 'currency', currency }).format(value);
   const { width } = useWindowDimensions();
   const isWide = width >= 760;
@@ -223,6 +216,37 @@ export function SaveDashboard({
         </Text>
       </View>
 
+      {showBudgets ? <View style={styles.pacingCard}>
+        <View style={styles.pacingHeader}>
+          <View style={styles.pacingIcon}>
+            <Text style={styles.pacingIconText}>⌁</Text>
+          </View>
+          <View style={styles.pacingText}>
+            <Text style={styles.pacingTitle}>Monthly Budget</Text>
+            <Text style={styles.pacingMeta}>Budget Progress</Text>
+            <Text style={styles.pacingMeta}>
+              {formatMoney(budgetedSpent)} spent · {Math.round(spendPercent)}% of budget
+            </Text>
+          </View>
+        </View>
+        <View style={styles.insightBubble}>
+          <Text style={styles.insightText}>
+            {!budgetTotal
+              ? 'Set a monthly budget to track your spending'
+              : spendPercent > 100
+                ? `${formatMoney(budgetedSpent - budgetTotal)} over budget`
+                : `${formatMoney(budgetTotal - budgetedSpent)} remaining this month`}
+          </Text>
+        </View>
+        <View style={styles.progressTrack}>
+          <View style={[styles.progressFill, { width: `${Math.min(spendPercent, 100)}%` }]} />
+        </View>
+        <View style={styles.progressLabels}>
+          <Text style={styles.progressLabel}>{formatMoney(budgetedSpent)} spent</Text>
+          <Text style={styles.progressLabel}>Budget: {formatMoney(budgetTotal)}</Text>
+        </View>
+      </View> : null}
+
       <View style={[styles.metricGrid, isWide && styles.metricGridWide]}>
         <MetricCard
           label="Monthly income"
@@ -255,100 +279,6 @@ export function SaveDashboard({
           note={`All dates · ${transactionCounts.income} income · ${transactionCounts.expense} expenses`}
         />
       </View>
-
-      {showBudgets ? <View style={styles.pacingCard}>
-        <View style={styles.pacingHeader}>
-          <View style={styles.pacingIcon}>
-            <Text style={styles.pacingIconText}>⌁</Text>
-          </View>
-          <View style={styles.pacingText}>
-            <Text style={styles.pacingTitle}>Monthly budget</Text>
-            <Text style={styles.pacingMeta}>
-              {formatMoney(budgetedSpent)} spent · {Math.round(spendPercent)}%
-              of budget
-            </Text>
-          </View>
-        </View>
-        <View style={styles.insightBubble}>
-          <Text style={styles.insightText}>
-            {!budgetTotal
-              ? 'Set a monthly budget to track your spending'
-              : spendPercent > 100
-                ? `${formatMoney(budgetedSpent - budgetTotal)} over budget`
-                : `${formatMoney(budgetTotal - budgetedSpent)} remaining this month`}
-          </Text>
-        </View>
-        <View style={styles.progressTrack}>
-          <View
-            style={[
-              styles.progressFill,
-              { width: `${Math.min(spendPercent, 100)}%` },
-            ]}
-          />
-        </View>
-        <View style={styles.progressLabels}>
-          <Text style={styles.progressLabel}>
-            {formatMoney(budgetedSpent)} spent
-          </Text>
-          <Text style={styles.progressLabel}>
-            Budget: {formatMoney(budgetTotal)}
-          </Text>
-        </View>
-      </View> : null}
-
-      <SectionCard title="Recent transactions">
-        {[...transactions]
-          .sort((a, b) => b.date.localeCompare(a.date))
-          .slice(0, 5)
-          .map((item) => (
-            <Pressable
-              key={item.id}
-              accessibilityRole="button"
-              style={{
-                paddingVertical: 14,
-                borderBottomWidth: 1,
-                borderColor: palette.border,
-              }}
-              onPress={() =>
-                onTransactionPress ? onTransactionPress(item.id) : router.push({
-                  pathname: '/transaction-detail',
-                  params: { id: item.id },
-                })
-              }
-            >
-              <View
-                style={{
-                  flexDirection: 'row',
-                  justifyContent: 'space-between',
-                  gap: 12,
-                }}
-              >
-                <Text style={{ color: palette.text, flex: 1, fontSize: 15 }}>
-                  {item.description}
-                </Text>
-                <Text
-                  style={{
-                    color:
-                      item.type === 'income' ? palette.green : palette.text,
-                  }}
-                >
-                  {formatMoney(item.amount)}
-                </Text>
-              </View>
-              <Text style={{ color: palette.muted, marginTop: 5 }}>
-                {item.date} · {item.category}
-                {item.syncState === 'pending' ? ' · Awaiting upload' : ''}
-              </Text>
-            </Pressable>
-          ))}
-        {!transactions.length && (
-          <Text style={styles.emptyText}>
-            {loading
-              ? 'Loading your finances…'
-              : 'No transactions this month. Add your first record with the + button.'}
-          </Text>
-        )}
-      </SectionCard>
 
       <View
         style={[styles.sectionColumns, isWide && styles.sectionColumnsWide]}

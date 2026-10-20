@@ -19,6 +19,7 @@ export function receiptDraftFields(
     amount: String(receipt.amount),
     date: receipt.date,
     merchant: merchant.slice(0, 120),
+    tin: receipt.tin?.trim().slice(0, 40) || '',
     description: (receipt.notes?.trim() || (merchant ? `Purchase at ${merchant}` : '')).slice(0, 160),
     ...(category ? { category: (categories.find(item => item.name.toLowerCase() === category.toLowerCase())?.name ?? category).slice(0, 80) } : {}),
   };

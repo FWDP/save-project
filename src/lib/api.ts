@@ -1,6 +1,6 @@
-import { accessToken } from './auth';
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
+import { accessToken } from './auth';
 
 export type ApiTransaction = {
   revision?: number;
@@ -482,6 +482,7 @@ export function deleteBudget(id: string) {
 export type ApiParsedReceipt = {
   merchant: string;
   amount: number;
+  tin?: string;
   currency?: string;
   date: string;
   category?: string;

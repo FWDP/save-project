@@ -1,13 +1,12 @@
+import { SaveDashboard } from '@/components/dashboard/save-dashboard';
+import { MonthPicker } from '@/components/month-picker';
+import { AppSidebar } from '@/components/navigation/app-sidebar';
+import { useAccountFinance } from '@/components/providers/account-finance';
+import { dashboardFromTransactions, expenseHistory } from '@/lib/account-dashboard';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { MonthPicker } from '@/components/month-picker';
-import { SaveDashboard } from '@/components/dashboard/save-dashboard';
-import { ExpenseHistory } from '@/components/dashboard/expense-history';
-import { AppSidebar } from '@/components/navigation/app-sidebar';
-import { useAccountFinance } from '@/components/providers/account-finance';
-import { dashboardFromTransactions, expenseHistory } from '@/lib/account-dashboard';
 
 export default function DashboardScreen() {
   const router = useRouter();
@@ -37,15 +36,12 @@ export default function DashboardScreen() {
         <Text accessibilityLiveRegion="polite" style={{ color: '#9ba9bf', padding: 12 }}>{syncMessage}</Text>
         {error ? <View style={{ padding: 16 }}><Text accessibilityRole="alert" style={{ color: '#ff788c' }}>{error}</Text>
           <Pressable onPress={() => void refresh()} style={{ paddingVertical: 12 }}><Text style={{ color: '#75b6ff' }}>Retry sync</Text></Pressable></View> : null}
-        <ExpenseHistory transactions={transactions} currency="PHP"
-          onOpen={id => router.push({ pathname: '/transaction-detail', params: { id } })} />
         <Text style={{ color: '#f4f7fb', fontWeight: '700', padding: 12 }}>Monthly overview</Text>
         <MonthPicker />
         <SaveDashboard
           monthKey={selectedMonth} accountName="My finances" currency="PHP"
           showBudgets budgets={data.budgets} transactions={data.transactions} totals={data.totals} allExpenses={allExpenses}
           transactionCounts={{ income: transactions.filter(item => item.type === 'income').length, expense: allExpenses.count }}
-          loading={loading} onTransactionPress={id => router.push({ pathname: '/transaction-detail', params: { id } })}
         />
       </ScrollView>
       <View style={styles.fabGroup}>

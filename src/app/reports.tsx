@@ -1,12 +1,13 @@
 import { MonthPicker } from '@/components/month-picker';
 import { exportFile } from '@/lib/export-file';
+import { exportPdf } from '@/lib/export-pdf';
 import { useMemo, useState } from 'react';
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { FinancePage } from '@/components/layout/finance-page';
+import { useAccountFinance } from '@/components/providers/account-finance';
 import { accountTransactionsCsv } from '@/lib/account-records';
 import type { ApiTransaction } from '@/lib/api';
-import { useAccountFinance } from '@/components/providers/account-finance';
 
 type PeriodKey = 'month' | 'lastMonth' | 'threeMonths' | 'sixMonths' | 'year';
 const PERIODS: { key: PeriodKey; label: string }[] = [
@@ -148,6 +149,30 @@ function ReportsScreen() {
       );
     }
   };
+  const exportReportPdf = async () => {
+    if (isLoading || syncError) return;
+    const rows: [string, string][] = [];
+    const periods = mode === 'compare'
+      ? [[periodA, a, 'Period A'], [periodB, b, 'Period B']] as const
+      : [[periodA, a, PERIODS.find((item) => item.key === periodA)?.label ?? 'Period'] ] as const;
+    for (const [key, summary, label] of periods) {
+      rows.push(
+        [`${label} · Period`, PERIODS.find((item) => item.key === key)?.label ?? key],
+        [`${label} · Total spent`, money(summary.total)],
+        [`${label} · Transactions`, String(summary.count)],
+        [`${label} · Average`, money(summary.average)],
+        [`${label} · Largest expense`, money(summary.largest)],
+      );
+      for (const [category, amount] of summary.categories) {
+        rows.push([`${label} · ${category}`, money(amount)]);
+      }
+    }
+    try {
+      await exportPdf(`save-report-${periodA}.pdf`, 'SAVE Spending Report', rows);
+    } catch {
+      Alert.alert('Export failed', 'The PDF could not be created or shared on this device.');
+    }
+  };
 
   return (
     <FinancePage title="Reports" subtitle="Personal Spending Analysis">
@@ -169,6 +194,9 @@ function ReportsScreen() {
         </View>
         <Pressable disabled={isLoading || !!syncError} style={styles.export} onPress={exportCsv}>
           <Text style={styles.exportText}>⇩ Export CSV</Text>
+        </Pressable>
+        <Pressable disabled={isLoading || !!syncError} style={styles.export} onPress={exportReportPdf}>
+          <Text style={styles.exportText}>⇩ Export PDF</Text>
         </Pressable>
       </View>
 
