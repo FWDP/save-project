@@ -1,7 +1,7 @@
-import { CURRENCIES, minorToDecimal } from "@/lib/currency";
 import { api, ApiError } from "@/lib/api";
+import { CURRENCIES, minorToDecimal } from "@/lib/currency";
 import { filters } from "@/lib/format";
-import type { TransactionPage, ConvertedReport } from "@/lib/types";
+import type { ConvertedReport, TransactionPage } from "@/lib/types";
 export async function GET(
   request: Request,
 ) {
@@ -16,8 +16,23 @@ export async function GET(
   if (!(CURRENCIES as readonly string[]).includes(target))
     return new Response("Unsupported currency", { status: 400 });
   let data: Pick<TransactionPage, "summary" | "categories" | "total">;
+  let transactions: TransactionPage["items"];
   let quote: ConvertedReport["quote"] | undefined;
   try {
+    const firstPageQuery = new URLSearchParams(query);
+    firstPageQuery.set("page", "1");
+    const firstPage = await api<TransactionPage>(`/ledger/transactions?${firstPageQuery}`);
+    transactions = [...firstPage.items];
+    const pageCount = Math.ceil(firstPage.total / firstPage.pageSize);
+    const remainingPages = await Promise.all(
+      Array.from({ length: Math.max(0, pageCount - 1) }, (_, index) => {
+        const pageQuery = new URLSearchParams(query);
+        pageQuery.set("page", String(index + 2));
+        return api<TransactionPage>(`/ledger/transactions?${pageQuery}`);
+      }),
+    );
+    for (const page of remainingPages) transactions.push(...page.items);
+
     if (target !== "PHP") {
       query.set("target", target);
       const converted = await api<ConvertedReport>(
@@ -26,9 +41,7 @@ export async function GET(
       data = converted;
       quote = converted.quote;
     } else {
-      data = await api<TransactionPage>(
-        `/ledger/transactions?${query}`,
-      );
+      data = firstPage;
     }
   } catch (error) {
     if (error instanceof ApiError)
@@ -56,6 +69,16 @@ export async function GET(
       c.name,
       minorToDecimal(c.amountMinor, target),
       c.count,
+    ]),
+    ["Transactions in report (recorded in PHP)", "", ""],
+    ["Date", "Type", "Description", "Merchant", "Category", "Amount (PHP)"],
+    ...transactions.map((item) => [
+      item.date,
+      item.type,
+      item.description,
+      item.merchant || "",
+      item.category,
+      minorToDecimal(item.amountMinor, "PHP"),
     ]),
   ];
   if (quote)

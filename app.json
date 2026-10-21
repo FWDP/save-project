@@ -40,6 +40,13 @@
       "expo-sqlite",
       "expo-secure-store",
       [
+        "expo-file-system",
+        {
+          "supportsOpeningDocumentsInPlace": true,
+          "enableFileSharing": true
+        }
+      ],
+      [
         "expo-camera",
         {
           "cameraPermission": "Allow SAVE to photograph receipts for expense capture.",

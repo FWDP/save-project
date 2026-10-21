@@ -1,6 +1,6 @@
+import { File } from 'expo-file-system';
 import * as Print from 'expo-print';
-import * as Sharing from 'expo-sharing';
-import { Platform } from 'react-native';
+import { exportBinaryFile } from './export-file';
 
 function escapeHtml(value: string) {
   return value.replace(/[&<>"']/g, (character) => ({
@@ -25,14 +25,6 @@ export async function exportPdf(
   </style></head><body><h1>${escapeHtml(title)}</h1><p>Generated ${escapeHtml(new Date().toLocaleString())}</p>
   <table>${rows.map(([label, value]) => `<tr><th>${escapeHtml(label)}</th><td>${escapeHtml(value)}</td></tr>`).join('')}</table></body></html>`;
   const { uri } = await Print.printToFileAsync({ html });
-  if (Platform.OS !== 'web') {
-    if (!(await Sharing.isAvailableAsync())) {
-      throw new Error('PDF sharing is unavailable on this device.');
-    }
-    await Sharing.shareAsync(uri, {
-      mimeType: 'application/pdf',
-      dialogTitle: filename,
-      UTI: '.pdf',
-    });
-  }
+  const file = new File(uri);
+  await exportBinaryFile(filename, await file.bytes(), 'application/pdf');
 }

@@ -115,19 +115,25 @@ function ReportsScreen() {
   const [periodA, setPeriodA] = useState<PeriodKey>('month');
   const [periodB, setPeriodB] = useState<PeriodKey>('lastMonth');
 
-  const a = useMemo(
-    () =>
-      stats(
-        transactions.filter((item) => inPeriod(item, periodA, selectedMonth)),
-      ),
+  const periodTransactionsA = useMemo(
+    () => transactions
+      .filter((item) => inPeriod(item, periodA, selectedMonth))
+      .sort((left, right) => right.date.localeCompare(left.date)),
     [periodA, transactions, selectedMonth],
   );
-  const b = useMemo(
-    () =>
-      stats(
-        transactions.filter((item) => inPeriod(item, periodB, selectedMonth)),
-      ),
+  const periodTransactionsB = useMemo(
+    () => transactions
+      .filter((item) => inPeriod(item, periodB, selectedMonth))
+      .sort((left, right) => right.date.localeCompare(left.date)),
     [periodB, transactions, selectedMonth],
+  );
+  const a = useMemo(
+    () => stats(periodTransactionsA),
+    [periodTransactionsA],
+  );
+  const b = useMemo(
+    () => stats(periodTransactionsB),
+    [periodTransactionsB],
   );
 
   const maxCategory = Math.max(
@@ -165,6 +171,13 @@ function ReportsScreen() {
       );
       for (const [category, amount] of summary.categories) {
         rows.push([`${label} · ${category}`, money(amount)]);
+      }
+      const periodTransactions = key === periodA ? periodTransactionsA : periodTransactionsB;
+      rows.push([`${label} · Transaction details`, `${periodTransactions.length} records`]);
+      for (const item of periodTransactions) {
+        rows.push(
+          [`${label} · ${item.date} · ${item.description}`, `${item.type} · ${item.category} · ${item.merchant || 'No merchant'} · ${money(item.amount)}`],
+        );
       }
     }
     try {
@@ -294,7 +307,46 @@ function ReportsScreen() {
           </View>
         </>
       ) : null}
+      {mode === 'single' ? (
+        <ReportTransactions title="Transactions in this report" items={periodTransactionsA} money={money} />
+      ) : (
+        <>
+          <ReportTransactions title="Period A transactions" items={periodTransactionsA} money={money} />
+          <ReportTransactions title="Period B transactions" items={periodTransactionsB} money={money} />
+        </>
+      )}
     </FinancePage>
+  );
+}
+
+function ReportTransactions({
+  title,
+  items,
+  money,
+}: {
+  title: string;
+  items: ApiTransaction[];
+  money: (amount: number) => string;
+}) {
+  return (
+    <View style={styles.card}>
+      <Text style={styles.cardTitle}>{title} · {items.length}</Text>
+      {items.length ? items.map((item) => (
+        <View key={item.id} style={styles.transactionRow}>
+          <View style={styles.transactionDetails}>
+            <Text style={styles.transactionDescription}>{item.description}</Text>
+            <Text style={styles.transactionMeta}>
+              {item.date} · {item.type} · {item.category}{item.merchant ? ` · ${item.merchant}` : ''}
+            </Text>
+          </View>
+          <Text style={[styles.transactionAmount, item.type === 'income' && styles.incomeAmount]}>
+            {item.type === 'income' ? '+' : '−'}{money(item.amount)}
+          </Text>
+        </View>
+      )) : (
+        <Text style={styles.empty}>No transactions in this period.</Text>
+      )}
+    </View>
   );
 }
 
@@ -436,6 +488,19 @@ const styles = StyleSheet.create({
   metric: { flexDirection: 'row', alignItems: 'center', minHeight: 34 },
   metricLabel: { color: '#a1aec2', flex: 1 },
   metricValue: { color: '#f2f6fb', fontWeight: '800' },
+  transactionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 11,
+    borderBottomWidth: 1,
+    borderBottomColor: '#19263d',
+  },
+  transactionDetails: { flex: 1, gap: 4 },
+  transactionDescription: { color: '#f2f6fb', fontSize: 13, fontWeight: '700' },
+  transactionMeta: { color: '#8e9bb0', fontSize: 11, lineHeight: 16 },
+  transactionAmount: { color: '#f2f6fb', fontWeight: '800', fontSize: 12 },
+  incomeAmount: { color: '#28ca83' },
   count: { color: '#8996aa', marginRight: 10 },
   barRow: { flexDirection: 'row', alignItems: 'center', minHeight: 50 },
   barLabel: {

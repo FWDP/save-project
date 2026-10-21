@@ -1,9 +1,9 @@
+import { CategoryBreakdown, EmptyTransactions, Summary, TransactionTable } from "@/components/finance-view";
 import { LiveConversion } from "@/components/live-conversion";
-import Link from "next/link";
 import { api } from "@/lib/api";
 import { filters, money, monthLabel } from "@/lib/format";
-import { Summary, CategoryBreakdown } from "@/components/finance-view";
 import type { TransactionPage } from "@/lib/types";
+import Link from "next/link";
 export default async function Reports({
   searchParams,
 }: {
@@ -11,10 +11,14 @@ export default async function Reports({
 }) {
 
   const query = filters(await searchParams, "Asia/Manila");
-  query.delete("page");
   const data = await api<TransactionPage>(
     `/ledger/transactions?${query}`,
   );
+  const pageHref = (page: number) => {
+    const next = new URLSearchParams(query);
+    next.set("page", String(page));
+    return `/reports?${next}`;
+  };
   return (
     <>
       <div className="page-heading">
@@ -23,12 +27,14 @@ export default async function Reports({
           <h1>Understand your spending.</h1>
           <p>Your financial summary for {monthLabel(query.get("month")!)}.</p>
         </div>
-        <a
-          className="button secondary"
-          href={`/reports/export?${query}`}
-        >
-          Export summary CSV
-        </a>
+        <div className="button-row" style={{ flexWrap: "wrap" }}>
+          <a className="button secondary" href={`/reports/export?${query}`}>
+            Export CSV
+          </a>
+          <a className="button secondary" href={`/reports/export/pdf?${query}`}>
+            Export PDF
+          </a>
+        </div>
       </div>
       <form className="period-form report-period">
         <label>
@@ -90,6 +96,38 @@ export default async function Reports({
           </div>
         </section>
       </div>
+      <section className="panel">
+        <div className="panel-heading">
+          <div>
+            <h2>Transactions in this report</h2>
+            <p>{data.total} matching records for {monthLabel(query.get("month")!)}.</p>
+          </div>
+        </div>
+        {data.items.length ? (
+          <TransactionTable items={data.items} currency="PHP" />
+        ) : (
+          <EmptyTransactions filtered />
+        )}
+        {data.total > data.pageSize ? (
+          <div className="pagination">
+            <span>
+              {`${(data.page - 1) * data.pageSize + 1}–${Math.min(data.page * data.pageSize, data.total)} of ${data.total} records`}
+            </span>
+            <div>
+              {data.page > 1 ? (
+                <Link className="button small secondary" href={pageHref(data.page - 1)}>
+                  Previous
+                </Link>
+              ) : null}
+              {data.page * data.pageSize < data.total ? (
+                <Link className="button small secondary" href={pageHref(data.page + 1)}>
+                  Next
+                </Link>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
+      </section>
     </>
   );
 }
