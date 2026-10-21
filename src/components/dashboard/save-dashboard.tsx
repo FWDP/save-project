@@ -410,7 +410,7 @@ export function SaveDashboard({
         )}
       </SectionCard>
 
-      {showBudgets ? <SectionCard title="Budget Progress">
+      {showBudgets ? <SectionCard title="Budget Details">
         {budgets.map((budget, index) => {
           const used = budgetSpent(budget, transactions, currentMonthStr);
           const percent = budget.limit > 0 ? (used / budget.limit) * 100 : 0;

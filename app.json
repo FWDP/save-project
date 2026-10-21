@@ -13,6 +13,7 @@
       "bundleIdentifier": "com.fwdp-rel8ph.save"
     },
     "android": {
+      "versionCode": 5,
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
