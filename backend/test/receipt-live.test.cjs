@@ -24,7 +24,7 @@ test('Live sends image over a dedicated session and closes on function result', 
   assert.deepEqual(await readReceiptLive(state.ai,'gemini-3.8-live','Read receipt','image','image/png'),args);
   assert.equal(state.closed,1);
   assert.equal(state.options.model,'gemini-3.8-live');
-  assert.deepEqual(state.options.config.responseModalities,['AUDIO']);
+  assert.deepEqual(state.options.config.responseModalities,['TEXT']);
   assert.equal(state.options.config.responseSchema,undefined);
   assert.equal(state.payload.turns[0].parts[0].inlineData.mimeType,'image/png');
 });

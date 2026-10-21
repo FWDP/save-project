@@ -27,6 +27,7 @@ const receiptResult = z.object({
   notes: z.string().trim().max(2000).optional(),
   confidence: z.number().min(0).max(1).optional(),
 });
+const MAX_SCAN_ATTEMPTS = 3;
 
 @Injectable()
 export class ReceiptsService {
@@ -91,37 +92,46 @@ export class ReceiptsService {
       '7. notes should contain a short summary of purchased items or service description.',
     ].join('\n');
 
-    try {
-      const result = await readReceiptLive(ai, model, prompt, cleanBase64, mimeType);
-      const validated = receiptResult.safeParse(result);
-      if (!validated.success) {
-        throw new BadRequestException('AI returned invalid receipt details. Try a clearer image or enter the details manually.');
-      }
-      const parsed = validated.data;
+    let lastError: unknown;
+    for (let attempt = 1; attempt <= MAX_SCAN_ATTEMPTS; attempt++) {
+      try {
+        const result = await readReceiptLive(ai, model, prompt, cleanBase64, mimeType);
+        const validated = receiptResult.safeParse(result);
+        if (!validated.success) {
+          throw new BadRequestException('AI returned invalid receipt details. Try a clearer image or enter the details manually.');
+        }
+        const parsed = validated.data;
+        if (parsed.confidence !== undefined && parsed.confidence < 0.55) {
+          throw new BadRequestException('AI confidence was too low to trust this receipt scan.');
+        }
+        const amount = Number(parsed.amount);
+        if (!Number.isFinite(amount) || amount <= 0) {
+          throw new BadRequestException('AI reader could not detect a valid transaction amount.');
+        }
 
-      // Validate and clean results
-      const amount = Number(parsed.amount);
-      if (!Number.isFinite(amount) || amount <= 0) {
-        throw new BadRequestException('AI reader could not detect a valid transaction amount.');
+        return {
+          merchant: parsed.merchant?.trim() || 'Unknown Merchant',
+          tin: parsed.tin?.trim() || undefined,
+          amount: Math.round(amount * 100) / 100,
+          currency: parsed.currency?.trim()?.toUpperCase() || undefined,
+          date: parsed.date || today,
+          category: parsed.category?.trim() || undefined,
+          tax: typeof parsed.tax === 'number' && Number.isFinite(parsed.tax) ? Math.round(parsed.tax * 100) / 100 : undefined,
+          notes: parsed.notes?.trim() || undefined,
+          confidence: parsed.confidence,
+        };
+      } catch (error: unknown) {
+        lastError = error;
+        if (!(error instanceof BadRequestException || error instanceof ServiceUnavailableException)) {
+          break;
+        }
       }
-
-      return {
-        merchant: parsed.merchant?.trim() || 'Unknown Merchant',
-        tin: parsed.tin?.trim() || undefined,
-        amount: Math.round(amount * 100) / 100,
-        currency: parsed.currency?.trim()?.toUpperCase() || undefined,
-        date: parsed.date || today,
-        category: parsed.category?.trim() || undefined,
-        tax: typeof parsed.tax === 'number' && Number.isFinite(parsed.tax) ? Math.round(parsed.tax * 100) / 100 : undefined,
-        notes: parsed.notes?.trim() || undefined,
-        confidence: parsed.confidence,
-      };
-    } catch (err: unknown) {
-      this.logger.warn('Gemini Live receipt extraction failed');
-      if (err instanceof BadRequestException || err instanceof ServiceUnavailableException) {
-        throw err;
-      }
-      throw new ServiceUnavailableException('Gemini Live could not complete the scan. Please retry.');
     }
+
+    this.logger.warn(`Gemini Live receipt extraction failed after ${MAX_SCAN_ATTEMPTS} attempts`);
+    if (lastError instanceof BadRequestException || lastError instanceof ServiceUnavailableException) {
+      throw lastError;
+    }
+    throw new ServiceUnavailableException('Gemini Live could not complete the scan. Please retry.');
   }
 }

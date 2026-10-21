@@ -73,6 +73,44 @@ test('ReceiptsService handles invalid or zero amount in AI output gracefully', a
   );
 });
 
+test('ReceiptsService retries incomplete extraction and succeeds on a later attempt', async () => {
+  const valid = { merchant: 'Shop', amount: 25, date: '2026-09-28' };
+  let attempts = 0;
+  const service = new ReceiptsService(mockConfig({ GEMINI_API_KEY: 'test-key' }));
+  service.aiClient = { live: { connect: async ({ callbacks }) => {
+    attempts++;
+    return {
+      sendClientContent() {
+        queueMicrotask(() => callbacks.onmessage(attempts === 1
+          ? { serverContent: { turnComplete: true } }
+          : { toolCall: { functionCalls: [{ name: 'extract_receipt', args: valid }] } }));
+      },
+      close() {},
+    };
+  } } };
+
+  const result = await service.scanReceipt('dummy');
+  assert.equal(result.merchant, valid.merchant);
+  assert.equal(result.amount, valid.amount);
+  assert.equal(result.date, valid.date);
+  assert.equal(attempts, 2);
+});
+
+test('ReceiptsService stops after three incomplete extraction attempts', async () => {
+  let attempts = 0;
+  const service = new ReceiptsService(mockConfig({ GEMINI_API_KEY: 'test-key' }));
+  service.aiClient = { live: { connect: async ({ callbacks }) => {
+    attempts++;
+    return {
+      sendClientContent() { queueMicrotask(() => callbacks.onmessage({ serverContent: { turnComplete: true } })); },
+      close() {},
+    };
+  } } };
+
+  await assert.rejects(service.scanReceipt('dummy'), /could not extract this receipt/i);
+  assert.equal(attempts, 3);
+});
+
 test('ReceiptsController processes uploaded file buffer as base64', async () => {
   const dummyResult = {
     merchant: 'Shell Station',
