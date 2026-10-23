@@ -85,6 +85,11 @@
     "services:start": "systemctl --user start save-backend save-web",
     "services:logs": "journalctl --user -u save-web -u save-backend -f"
   },
+  "overrides": {
+    "@walletconnect/keyvaluestorage": {
+      "@react-native-async-storage/async-storage": "$@react-native-async-storage/async-storage"
+    }
+  },
   "resolutions": {
     "uuid": "11.1.1",
     "image-size": "2.0.2",
