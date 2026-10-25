@@ -1,3 +1,5 @@
+import { extractGcashStatement } from './gcash-statement';
+import { PDFParse } from 'pdf-parse';
 import {
   BadRequestException,
   Body,
@@ -23,6 +25,26 @@ interface UploadedFileBuffer {
 @Controller('receipts')
 export class ReceiptsController {
   constructor(private readonly receiptsService: ReceiptsService) {}
+
+  @Post('statement')
+  @HttpCode(HttpStatus.OK)
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 10 * 1024 * 1024 } }))
+  async statement(@UploadedFile() file?: UploadedFileBuffer) {
+    if (!file?.buffer || file.buffer.subarray(0, 5).toString() !== '%PDF-') {
+      throw new BadRequestException('Choose a PDF statement up to 10 MB.');
+    }
+    const parser = new PDFParse({ data: new Uint8Array(file.buffer) });
+    try {
+      const info = await parser.getInfo();
+      if (info.total > 50) throw new BadRequestException('Import up to 50 PDF pages at a time.');
+      const result = await parser.getText({ cellSeparator: '\t' });
+      if (!result.text.trim()) throw new BadRequestException('This PDF has no readable text. Use a text PDF or CSV.');
+      return { text: /GCash Transaction History/.test(result.text) ? await extractGcashStatement(file.buffer) : result.text };
+    } catch (error) {
+      if (error instanceof BadRequestException) throw error;
+      throw new BadRequestException('Cannot read this PDF. Remove its password locally or export an unprotected text PDF/CSV.');
+    } finally { await parser.destroy(); }
+  }
 
   @Post('scan')
   @HttpCode(HttpStatus.OK)

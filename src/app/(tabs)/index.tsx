@@ -1,3 +1,4 @@
+import { Text } from '@/components/accessible-text';
 import { SaveDashboard } from '@/components/dashboard/save-dashboard';
 import { MonthPicker } from '@/components/month-picker';
 import { AppSidebar } from '@/components/navigation/app-sidebar';
@@ -5,7 +6,7 @@ import { useAccountFinance } from '@/components/providers/account-finance';
 import { dashboardFromTransactions, expenseHistory } from '@/lib/account-dashboard';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
-import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function DashboardScreen() {

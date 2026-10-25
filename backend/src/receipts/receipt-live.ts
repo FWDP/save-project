@@ -8,7 +8,7 @@ const receiptFunction = {
     type: Type.OBJECT,
     properties: {
       merchant: { type: Type.STRING },
-      tin: { type: Type.STRING, description: 'Printed taxpayer identification number (TIN), if present. Do not confuse with tax amount.' },
+      tin: { type: Type.STRING, description: 'Merchant/seller VAT REG TIN or NON-VAT REG TIN, usually in the header or footer. Preserve all printed digits and branch suffix, e.g. 123-456-789-00000. Never use buyer TIN, tax amount, invoice, accreditation, permit or machine number. Return an empty string only if absent or unreadable.' },
       amount: { type: Type.NUMBER },
       currency: { type: Type.STRING },
       date: { type: Type.STRING, description: 'YYYY-MM-DD' },
@@ -17,7 +17,7 @@ const receiptFunction = {
       notes: { type: Type.STRING },
       confidence: { type: Type.NUMBER },
     },
-    required: ['merchant', 'amount', 'date'],
+    required: ['merchant', 'tin', 'amount', 'date'],
   },
 };
 

@@ -1,3 +1,4 @@
+import { Text, TextInput } from '@/components/accessible-text';
 import { DateField } from '@/components/date-field';
 import { useRefreshFinance } from '@/components/providers/finance-data-provider';
 import { scanReceiptWithAi } from '@/lib/api';
@@ -7,15 +8,7 @@ import { persistReceipt } from '@/lib/receipt-file';
 import { File } from 'expo-file-system';
 import { useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
-import {
-    ActivityIndicator,
-    Pressable,
-    StyleSheet,
-    Switch,
-    Text,
-    TextInput,
-    View,
-} from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Switch, View } from 'react-native';
 
 import { FinancePage } from '@/components/layout/finance-page';
 import { saveTransactionDraft } from '@/lib/transaction-writes';
@@ -71,8 +64,9 @@ function AddExpenseScreen() {
         mimeTypes: ['image/jpeg', 'image/png', 'image/webp'],
       });
       if (!selected.canceled) {
-        const mimeType = selected.result.type || 'image/jpeg';
-        const localUri = await persistReceipt(selected.result.uri, mimeType);
+        const sourceMimeType = selected.result.type || 'image/jpeg';
+        const localUri = await persistReceipt(selected.result.uri, sourceMimeType);
+        const mimeType = localUri.endsWith('.jpg') ? 'image/jpeg' : sourceMimeType;
         patchDraft({ receiptUri: localUri, receiptMimeType: mimeType });
         await processReceiptWithAi(localUri, mimeType);
       }
@@ -89,10 +83,12 @@ function AddExpenseScreen() {
       !validDate(draft.date) ||
       !draft.category.trim() ||
       !draft.description.trim() ||
+      !draft.merchant.trim() ||
+      !draft.tin.trim() ||
       !Number.isFinite(amount) ||
       amount <= 0
     ) {
-      setMessage('Date, amount, category, and description are required.');
+      setMessage('Date, amount, category, description, merchant or source, and merchant or source TIN are required.');
       return;
     }
     setSaving(true);
@@ -256,14 +252,15 @@ function AddExpenseScreen() {
         }
       />
       <Field
-        label="Merchant or source"
+        label="Merchant or source *"
         maxLength={120}
         value={draft.merchant}
         onChangeText={(merchant) => patchDraft({ merchant })}
         placeholder="e.g. Jollibee, SM Mall, Lazada…"
       />
+      {draft.receiptUri && !draft.tin.trim() && !analyzing ? <Text style={styles.help}>Merchant TIN was not read. Check the VAT/NON-VAT registration line on the receipt, enter it below, or retry the scan.</Text> : null}
       <Field
-        label="TIN"
+        label="Merchant or source TIN *"
         maxLength={40}
         value={draft.tin}
         onChangeText={(tin) => patchDraft({ tin })}
@@ -280,7 +277,7 @@ function AddExpenseScreen() {
         </View>
       ) : null}
       <View>
-        {draft.receiptUri && !analyzing && !aiStatus?.startsWith('✓') ? (
+        {draft.receiptUri && !analyzing && (!aiStatus?.startsWith('✓') || !draft.tin.trim()) ? (
           <Pressable disabled={saving} style={styles.dashedButton}
             onPress={() => void processReceiptWithAi(draft.receiptUri!, draft.receiptMimeType)}>
             <Text style={styles.dashedText}>Retry receipt scan</Text>

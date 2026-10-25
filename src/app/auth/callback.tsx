@@ -1,5 +1,6 @@
+import { Text } from '@/components/accessible-text';
 import { useEffect, useState } from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { Pressable, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import {
   finishAuth,
@@ -21,7 +22,7 @@ export default function AuthCallback() {
     for (const [key, value] of Object.entries(params))
       if (typeof value === 'string') query.set(key, value);
     void (async () => {
-      if (!(await getAuthUser()))
+      if (params.code || !(await getAuthUser()))
         await finishAuth(`${authRedirect()}?${query}`);
       const nextParam = Array.isArray(params.next) ? params.next[0] : params.next;
       const target =

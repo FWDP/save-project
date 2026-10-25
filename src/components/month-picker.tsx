@@ -1,4 +1,5 @@
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Text } from '@/components/accessible-text';
+import { Pressable, StyleSheet, View } from 'react-native';
 import { shiftMonth } from '@/lib/finance';
 import { useFinanceStore } from '@/store/finance-store';
 

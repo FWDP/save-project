@@ -11,15 +11,17 @@ test('receipt persistence waits for the copy and propagates copy failures', asyn
     constructor(...parts) { this.uri = parts.map(x => x.uri ?? x).join('/'); }
     async copy() { await new Promise(resolve => { complete = resolve; }); copied = true; }
     async base64() { assert.equal(copied, true); return 'aW1hZ2U='; }
+    delete() {}
   }
   class Directory { constructor() { this.uri = 'file:///documents/receipts'; } create() {} }
   const receipt = load(path.join(root, 'receipt-file.ts'), {
     'expo-file-system': { File, Directory, Paths: { document: 'file:///documents' } },
+    'expo-image-manipulator': { SaveFormat: { JPEG: 'jpeg' }, ImageManipulator: { manipulate: () => ({ renderAsync: async () => ({ width: 1000, height: 1500, release() {}, saveAsync: async () => ({ uri: 'file:///cache/resized.jpg' }) }), release() {} }) } },
     'expo-crypto': { randomUUID: () => 'unique' }, 'react-native': { Platform: { OS: 'android' } },
   });
   let returned = false;
   const pending = receipt.persistReceipt('content://provider/image.jpg').then(uri => { returned = true; return uri; });
-  await Promise.resolve();
+  await new Promise(resolve => setImmediate(resolve));
   assert.equal(returned, false);
   complete();
   const uri = await pending;
@@ -294,3 +296,33 @@ test('mobile account creation supports a direct dashboard redirect', () => {
   assert.match(csv, /^currency,date,type,amount/);
   assert.match(csv, /"PHP"/); assert.match(csv, /"12\.34"/); assert.match(csv, /"'=unsafe"/);
  });
+
+test('large receipts are resized and native image handles are released', async () => {
+  const released = []; let resize;
+  const image = index => ({ width: 4000, height: 6000, release: () => released.push(index), saveAsync: async () => ({ uri: 'file:///cache/small.jpg' }) });
+  let rendered = 0;
+  class File { constructor(...parts) { this.uri = parts.map(p => p.uri ?? p).join('/'); } async copy() {} delete() {} }
+  class Directory { constructor() { this.uri = 'file:///receipts'; } create() {} }
+  const receipt = load(path.join(root, 'receipt-file.ts'), {
+    'expo-file-system': { File, Directory, Paths: { document: 'file:///documents' } },
+    'expo-crypto': { randomUUID: () => 'image' }, 'react-native': { Platform: { OS: 'android' } },
+    'expo-image-manipulator': { SaveFormat: { JPEG: 'jpeg' }, ImageManipulator: { manipulate: () => ({ renderAsync: async () => image(++rendered), resize: size => { resize = size; }, release: () => released.push('context') }) } },
+  });
+  await receipt.persistReceipt('file:///large.jpg');
+  assert.deepEqual(resize, { height: 2560 });
+  assert.deepEqual(released, [1, 2, 'context']);
+});
+
+test('receipt ZIP includes readable photos once and reports missing files', async () => {
+  let archive;
+  class File { constructor(uri) { this.uri = uri; } async bytes() { if (this.uri.endsWith('missing')) throw new Error('missing'); return new Uint8Array([255, 216, 255, 217]); } }
+  const { exportReceiptZip } = load(path.join(root, 'receipt-zip.ts'), {
+    'expo-file-system': { File }, 'react-native': { Platform: { OS: 'android' } },
+    './export-file': { exportBinaryFile: async (name, bytes, type) => { assert.match(name, /\.zip$/); assert.equal(type, 'application/zip'); archive = bytes; } },
+  });
+  const result = await exportReceiptZip([{ id: 'a', date: '2026-10-26', receiptUri: 'file:///one', merchant: 'Shop' }, { id: 'b', receiptUri: 'file:///one' }, { id: 'c', receiptUri: 'file:///missing' }]);
+  assert.deepEqual(result, { saved: 1, missing: 1 });
+  const entries = require('fflate').unzipSync(archive);
+  assert.deepEqual([...entries['2026-10-26-a.jpg']], [255, 216, 255, 217]);
+  assert.match(require('fflate').strFromU8(entries['receipts.txt']), /c: receipt unavailable/);
+});

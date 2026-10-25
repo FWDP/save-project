@@ -1,7 +1,7 @@
+import { usePreferences } from '@/store/preferences-store';
 import { authClient, consumePostAuthRedirect, getAuthUser } from '@/lib/auth';
 import { useExpenseDraftStore } from '@/store/expense-draft-store';
 import { useFinanceStore } from '@/store/finance-store';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
     DarkTheme,
     DefaultTheme,
@@ -11,7 +11,7 @@ import {
 } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Appearance, useColorScheme, View } from 'react-native';
+import { ActivityIndicator, useColorScheme, View } from 'react-native';
 
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
 import { FinanceDataProvider } from '@/components/providers/finance-data-provider';
@@ -23,11 +23,7 @@ export default function TabLayout() {
   const colorScheme = useColorScheme();
   const currentAccount = useRef<string | null | undefined>(undefined);
   const [account, setAccount] = useState<string | null | undefined>(undefined);
-  useEffect(() => {
-    void AsyncStorage.getItem('save.dark-mode').then((value) => {
-      if (value !== null) Appearance.setColorScheme(value === 'true' ? 'dark' : 'light');
-    });
-  }, []);
+  useEffect(() => { void usePreferences.getState().load().catch(() => {}); }, []);
   useEffect(() => {
     if (account) {
       const next = consumePostAuthRedirect();
@@ -50,7 +46,7 @@ export default function TabLayout() {
       .catch(() => change(null));
     const subscription = authClient?.auth.onAuthStateChange(
       (event, session) => {
-        if (event === 'SIGNED_IN' || event === 'SIGNED_OUT')
+        if (event === 'SIGNED_IN' || event === 'SIGNED_OUT' || event === 'PASSWORD_RECOVERY')
           change(session?.user.id ?? null);
       },
     );
@@ -102,6 +98,7 @@ export default function TabLayout() {
             <Stack.Screen name="onboarding" />
           </Stack.Protected>
           <Stack.Screen name="auth/callback" />
+          <Stack.Screen name="reset-password" />
         </Stack>
       </FinanceDataProvider>
     </ThemeProvider>

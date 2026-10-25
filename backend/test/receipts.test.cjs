@@ -221,3 +221,11 @@ test('Live receipt output is validated before returning financial fields', async
     await assert.rejects(service.scanReceipt('dummy'), /invalid receipt details/);
   }
 });
+
+test('PDF statement endpoint extracts real PDF text and rejects non-PDF uploads', async () => {
+  const bytes = require('node:fs').readFileSync(require('node:path').join(__dirname, 'fixtures/statement.pdf'));
+  const controller = new ReceiptsController({});
+  const result = await controller.statement({ buffer: bytes, mimetype: 'application/pdf' });
+  assert.match(result.text, /10\/26\/2026/);
+  await assert.rejects(controller.statement({ buffer: Buffer.from('not a pdf'), mimetype: 'application/pdf' }), /Choose a PDF/);
+});

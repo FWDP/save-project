@@ -1,5 +1,6 @@
+import { Text } from '@/components/accessible-text';
 import { type Href, usePathname, useRouter } from 'expo-router';
-import { Modal, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { Modal, Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
 
 type AppSidebarProps = {
   visible: boolean;
@@ -8,7 +9,7 @@ type AppSidebarProps = {
 
 const menuItems: { label: string; href: Href; icon: string }[] = [
   { label: 'Dashboard', href: '/', icon: '⌘' },
-  { label: 'Expenses', href: '/expenses', icon: '▧' },
+  { label: 'Transactions', href: '/expenses', icon: '▧' },
   { label: 'Budgets', href: '/budgets', icon: '◔' },
   { label: 'Savings', href: '/savings', icon: '◈' },
   { label: 'Categories', href: '/categories', icon: '◇' },

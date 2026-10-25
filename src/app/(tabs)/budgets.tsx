@@ -1,5 +1,6 @@
+import { Text, TextInput } from '@/components/accessible-text';
 import { useEffect, useRef, useState } from 'react';
-import { Alert, Pressable, Text, TextInput, View } from 'react-native';
+import { Alert, Pressable, View } from 'react-native';
 import {
   FinancePage,
   financePageStyles as styles,

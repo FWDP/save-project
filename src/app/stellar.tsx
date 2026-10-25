@@ -1,7 +1,8 @@
+import { Text, TextInput } from '@/components/accessible-text';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import * as Clipboard from 'expo-clipboard';
 import { useLocalSearchParams } from 'expo-router';
-import { Alert, AppState, Linking, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, AppState, Linking, Platform, Pressable, StyleSheet, View } from 'react-native';
 
 import { FinancePage } from '@/components/layout/finance-page';
 import {

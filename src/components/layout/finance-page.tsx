@@ -1,14 +1,8 @@
+import { Text } from '@/components/accessible-text';
 import { useAccountFinance } from '@/components/providers/account-finance';
 import { useFocusEffect } from 'expo-router';
 import { type PropsWithChildren, useState, useCallback } from 'react';
-import {
-  Pressable,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import { KeyboardAvoidingView, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppSidebar } from '@/components/navigation/app-sidebar';
@@ -73,9 +67,11 @@ export function FinancePage({
           ) : null}
         </View>
       </View>
-      <View style={{ flex: 1 }}>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         {scroll ? (
           <ScrollView
+            automaticallyAdjustKeyboardInsets
+            keyboardShouldPersistTaps="handled"
             refreshControl={
               <RefreshControl
                 refreshing={refreshing ?? isLoading}
@@ -91,7 +87,7 @@ export function FinancePage({
         ) : (
           children
         )}
-      </View>
+      </KeyboardAvoidingView>
       <AppSidebar visible={sidebarOpen} onClose={() => setSidebarOpen(false)} />
     </SafeAreaView>
   );

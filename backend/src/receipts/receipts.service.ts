@@ -85,7 +85,7 @@ export class ReceiptsService {
       'Rules:',
       '1. amount must be a positive number representing the final total amount paid.',
       '2. merchant must be the primary business, store, or vendor name.',
-      '3. tin should be the merchant taxpayer identification number (TIN) printed on the receipt, if clearly present. Do not use the tax/VAT amount; omit if unreadable or absent.',
+      '3. Inspect both the receipt HEADER and FOOTER for the merchant/seller TIN. Read labels VAT REG TIN, VAT REG. TIN, NON-VAT REG TIN, NON VAT, TIN, Taxpayer Identification Number. Preserve all digits including the branch suffix and leading zeros. Never substitute buyer/customer TIN, VAT amount, invoice number, MIN, PTU or accreditation number. Return tin as an empty string only when absent or unreadable; do not invent digits.',
       '4. date must be formatted strictly as YYYY-MM-DD. If year is missing from the receipt, assume current year.',
       '5. currency should be the 3-letter currency code if indicated (e.g., PHP, USD, EUR, JPY).',
       '6. tax should be the tax or VAT amount if explicitly itemized, otherwise omit or 0.',

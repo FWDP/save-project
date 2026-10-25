@@ -1,3 +1,4 @@
+import { Text, TextInput } from '@/components/accessible-text';
 import { FinancePage } from '@/components/layout/finance-page';
 import {
     authConfigured,
@@ -8,7 +9,7 @@ import {
 } from '@/lib/auth';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 
 export default function OnboardingScreen() {
   const router = useRouter();
@@ -18,7 +19,7 @@ export default function OnboardingScreen() {
   const [signup, setSignup] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
-  const run = async (action: 'password' | 'magic' | 'google') => {
+  const run = async (action: 'password' | 'magic' | 'google' | 'recover') => {
     if (busy) return;
     setBusy(true);
     setMessage('');
@@ -32,6 +33,14 @@ export default function OnboardingScreen() {
       }
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()))
         throw new Error('Enter a valid email address.');
+      if (action === 'recover') {
+        const { error } = await client.auth.resetPasswordForEmail(email.trim(), {
+          redirectTo: authRedirect('/reset-password'),
+        });
+        if (error) throw error;
+        setMessage('Your email address is your SAVE user name. If this email has an account, a password reset link will arrive. Open it on this device.');
+        return;
+      }
       if (action === 'magic') {
         const { error } = await client.auth.signInWithOtp({
           email: email.trim(),
@@ -151,6 +160,10 @@ export default function OnboardingScreen() {
               : 'New to SAVE? Create an account'}
           </Text>
         </Pressable>
+        <Pressable disabled={busy || !authConfigured} style={styles.secondary} onPress={() => run('recover')}>
+          <Text style={styles.link}>Retrieve Password/User Name</Text>
+        </Pressable>
+        <Text style={styles.message}>Your user name is the email address you registered with.</Text>
         {message ? (
           <Text accessibilityLiveRegion="polite" style={styles.message}>
             {message}

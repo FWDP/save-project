@@ -93,3 +93,16 @@ export function validMoney(value: number) {
     Math.abs(value * 100 - Math.round(value * 100)) < 0.000001
   );
 }
+
+/** Display dates without timezone conversion; storage and API dates remain ISO. */
+export function displayDate(value: string) {
+  const date = value.slice(0, 10);
+  if (!validDate(date)) return value;
+  return `${date.slice(5, 7)}/${date.slice(8, 10)}/${date.slice(0, 4)}`;
+}
+export function importDate(value: string) {
+  const match = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(value);
+  const date = match ? `${match[3]}-${match[1]}-${match[2]}` : value;
+  if (!validDate(date)) throw new Error('Use a valid date in mm/dd/yyyy format.');
+  return date;
+}

@@ -1,5 +1,7 @@
+import { displayDate } from '@/lib/finance';
+import { Text, TextInput } from '@/components/accessible-text';
 import { useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 import type { ApiTransaction } from '@/lib/api';
 import { expenseHistory } from '@/lib/account-dashboard';
 
@@ -24,7 +26,7 @@ export function ExpenseHistory({ transactions, currency, onOpen }: {
       onPress={() => onOpen(item.id)} style={styles.row}>
       <View style={styles.details}>
         <Text style={styles.text}>{item.description}</Text>
-        <Text style={styles.meta}>{item.date} · {item.category}{item.merchant ? ` · ${item.merchant}` : ''}</Text>
+        <Text style={styles.meta}>{displayDate(item.date)} · {item.category}{item.merchant ? ` · ${item.merchant}` : ''}</Text>
         {item.tags?.length ? <Text style={styles.meta}>{item.tags.join(', ')}</Text> : null}
         <Text style={styles.meta}>{item.syncState === 'pending' ? 'Awaiting upload' : item.status ?? 'Recorded'}{item.recurring ? ' · Recurring' : ''}{item.receiptUri ? ' · Receipt attached' : ''}</Text>
       </View>

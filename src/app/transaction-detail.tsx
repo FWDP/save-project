@@ -1,6 +1,8 @@
+import { DateField } from '@/components/date-field';
+import { Text, TextInput } from '@/components/accessible-text';
 import { useAccountFinance } from '@/components/providers/account-finance';
 import { useState } from 'react';
-import { Alert, Pressable, Text, TextInput, View, Linking } from 'react-native';
+import { Alert, Pressable, View, Linking } from 'react-native';
 import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import {
@@ -22,6 +24,7 @@ function TransactionDetail() {
     date: item?.date ?? '',
     category: item?.category ?? '',
     merchant: item?.merchant ?? '',
+    tin: item?.customFields?.TIN ?? '',
   });
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
@@ -59,7 +62,8 @@ function TransactionDetail() {
     setBusy(true);
     try {
       const updated = await updateTransaction(id, {
-        ...form,
+        description: form.description, date: form.date, category: form.category, merchant: form.merchant,
+        customFields: { ...item.customFields, TIN: form.tin },
         amount: Number(form.amount),
       });
       setTransactions(
@@ -110,12 +114,12 @@ function TransactionDetail() {
       <View style={styles.card}>
         {(Object.keys(form) as (keyof typeof form)[]).map((key) => (
           <View key={key} style={{ marginBottom: 14 }}>
-            <Text style={styles.rowTitle}>
+            {key !== 'date' && <Text style={styles.rowTitle}>
               {key === 'amount'
                 ? `Amount (${currency})`
-                : key.charAt(0).toUpperCase() + key.slice(1)}
-            </Text>
-            <TextInput
+                : key === 'merchant' ? 'Merchant or source' : key === 'tin' ? 'Merchant or source TIN' : key.charAt(0).toUpperCase() + key.slice(1)}
+            </Text>}
+            {key === 'date' ? <DateField label="Date" value={form.date} onChange={date => setForm({ ...form, date })} /> : <TextInput
               editable={!busy}
               accessibilityLabel={key}
               value={form[key]}
@@ -129,7 +133,7 @@ function TransactionDetail() {
                 marginTop: 8,
                 fontSize: 16,
               }}
-            />
+            />}
           </View>
         ))}
       </View>
@@ -144,6 +148,7 @@ function TransactionDetail() {
             ) : (
               <Image
                 source={{ uri: item.receiptUri }}
+                cachePolicy="disk"
                 style={{ height: 300 }}
                 contentFit="contain"
               />

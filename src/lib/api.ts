@@ -541,3 +541,26 @@ export async function scanReceiptWithAi(
 
   return response.json() as Promise<ApiParsedReceipt>;
 }
+
+export async function readStatementPdf(uri: string): Promise<string> {
+  const token = await accessToken();
+  const body = new FormData();
+  let send = fetch;
+  if (Platform.OS === 'web') {
+    const response = await fetch(uri);
+    if (!response.ok) throw new Error('Could not read PDF.');
+    const blob = await response.blob();
+    if (blob.size > 10 * 1024 * 1024) throw new Error('PDF must be 10 MB or smaller.');
+    body.append('file', blob, 'statement.pdf');
+  } else {
+    const { File } = await import('expo-file-system');
+    const file = new File(uri);
+    if (!file.exists || file.size > 10 * 1024 * 1024) throw new Error('Choose a PDF up to 10 MB.');
+    body.append('file', file);
+    send = (await import('expo/fetch')).fetch as typeof fetch;
+  }
+  const response = await apiFetch(`${getApiBaseUrl()}/receipts/statement`, { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body }, 60_000, send);
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.message || 'PDF could not be read.');
+  return data.text;
+}

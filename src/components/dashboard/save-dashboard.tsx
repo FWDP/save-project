@@ -1,12 +1,8 @@
+import { Text } from '@/components/accessible-text';
 import { budgetSpent, merchantTotals, totalBudgetSpent } from '@/lib/finance';
 import { currencyDigits } from '@/lib/money';
 import { useMemo } from 'react';
-import {
-    StyleSheet,
-    Text,
-    View,
-    useWindowDimensions
-} from 'react-native';
+import { StyleSheet, View, useWindowDimensions } from 'react-native';
 
 import type { ApiBudget, ApiTransaction } from '@/lib/api';
 
@@ -216,14 +212,49 @@ export function SaveDashboard({
         </Text>
       </View>
 
+
+
+      <View style={[styles.metricGrid, isWide && styles.metricGridWide]}>
+        <MetricCard
+          label="Monthly income"
+          value={formatMoney(totals.income)}
+          accent={palette.text}
+          icon="↗"
+          note={`${transactions.filter(item => item.type === 'income').length} income records this month`}
+        />
+        <MetricCard
+          label="Total expenses"
+          value={formatMoney(allExpenses.total)}
+          accent={palette.text}
+          icon="↘"
+          note={`All dates · ${allExpenses.count} records${allExpenses.pending ? ` · ${allExpenses.pending} awaiting upload` : ''}${allExpenses.rejected ? ' · rejected excluded' : ''}`}
+        />
+        <MetricCard
+          label="Monthly net balance"
+          value={formatMoney(totals.balance)}
+          accent={totals.balance < 0 ? palette.red : palette.green}
+          icon="▣"
+          note={
+            totals.balance < 0 ? 'Deficit this month' : 'Remaining this month'
+          }
+        />
+        <MetricCard
+          label="Transactions"
+          value={String(transactionCounts.income + transactionCounts.expense)}
+          accent={palette.text}
+          icon="⌁"
+          note={`All dates · ${transactionCounts.income} income · ${transactionCounts.expense} expenses`}
+        />
+      </View>
+
       {showBudgets ? <View style={styles.pacingCard}>
         <View style={styles.pacingHeader}>
           <View style={styles.pacingIcon}>
             <Text style={styles.pacingIconText}>⌁</Text>
           </View>
           <View style={styles.pacingText}>
-            <Text style={styles.pacingTitle}>Monthly Budget</Text>
-            <Text style={styles.pacingMeta}>Budget Progress</Text>
+            <Text style={styles.pacingTitle}>{`Monthly Budget - ${monthLabel}`}</Text>
+
             <Text style={styles.pacingMeta}>
               {formatMoney(budgetedSpent)} spent · {Math.round(spendPercent)}% of budget
             </Text>
@@ -247,38 +278,48 @@ export function SaveDashboard({
         </View>
       </View> : null}
 
-      <View style={[styles.metricGrid, isWide && styles.metricGridWide]}>
-        <MetricCard
-          label="Monthly income"
-          value={formatMoney(totals.income)}
-          accent={palette.text}
-          icon="↗"
-          note={`${transactions.filter(item => item.type === 'income').length} income records this month`}
-        />
-        <MetricCard
-          label="Total expenses"
-          value={formatMoney(allExpenses.total)}
-          accent={palette.text}
-          icon="↘"
-          note={`All dates · ${allExpenses.count} records${allExpenses.pending ? ` · ${allExpenses.pending} awaiting upload` : ''}${allExpenses.rejected ? ' · rejected excluded' : ''}`}
-        />
-        <MetricCard
-          label="Monthly net balance"
-          value={formatMoney(totals.balance)}
-          accent={totals.balance < 0 ? palette.red : palette.green}
-          icon="▣"
-          note={
-            totals.balance < 0 ? 'Deficit this month' : 'Surplus this month'
-          }
-        />
-        <MetricCard
-          label="Transactions"
-          value={String(transactionCounts.income + transactionCounts.expense)}
-          accent={palette.text}
-          icon="⌁"
-          note={`All dates · ${transactionCounts.income} income · ${transactionCounts.expense} expenses`}
-        />
-      </View>
+      {showBudgets ? <SectionCard title={`Budget Progress - ${monthLabel}`}>
+        {budgets.map((budget, index) => {
+          const used = budgetSpent(budget, transactions, currentMonthStr);
+          const percent = budget.limit > 0 ? (used / budget.limit) * 100 : 0;
+          const color = categoryColors[index % categoryColors.length];
+          return (
+            <View key={budget.id} style={styles.budgetRow}>
+              <View style={styles.budgetHeading}>
+                <View style={styles.budgetNameWrap}>
+                  <View
+                    style={[styles.budgetDot, { backgroundColor: color }]}
+                  />
+                  <Text style={styles.budgetName}>{budget.category}</Text>
+                </View>
+                <Text style={styles.budgetAmount}>
+                  {formatMoney(used)} / {formatMoney(budget.limit)}
+                </Text>
+              </View>
+              <View style={styles.budgetMeta}>
+                <Text style={styles.budgetRemaining}>
+                  {Math.max(100 - Math.round(percent), 0)}% remaining
+                </Text>
+                <Text style={styles.budgetPercent}>{Math.round(percent)}%</Text>
+              </View>
+              <View style={styles.budgetTrack}>
+                <View
+                  style={[
+                    styles.budgetFill,
+                    {
+                      width: `${Math.min(percent, 100)}%`,
+                      backgroundColor: color,
+                    },
+                  ]}
+                />
+              </View>
+            </View>
+          );
+        })}
+        {!budgets.length ? (
+          <Text style={styles.emptyText}>No budget data is available yet.</Text>
+        ) : null}
+      </SectionCard> : null}
 
       <View
         style={[styles.sectionColumns, isWide && styles.sectionColumnsWide]}
@@ -410,48 +451,7 @@ export function SaveDashboard({
         )}
       </SectionCard>
 
-      {showBudgets ? <SectionCard title="Budget Details">
-        {budgets.map((budget, index) => {
-          const used = budgetSpent(budget, transactions, currentMonthStr);
-          const percent = budget.limit > 0 ? (used / budget.limit) * 100 : 0;
-          const color = categoryColors[index % categoryColors.length];
-          return (
-            <View key={budget.id} style={styles.budgetRow}>
-              <View style={styles.budgetHeading}>
-                <View style={styles.budgetNameWrap}>
-                  <View
-                    style={[styles.budgetDot, { backgroundColor: color }]}
-                  />
-                  <Text style={styles.budgetName}>{budget.category}</Text>
-                </View>
-                <Text style={styles.budgetAmount}>
-                  {formatMoney(used)} / {formatMoney(budget.limit)}
-                </Text>
-              </View>
-              <View style={styles.budgetMeta}>
-                <Text style={styles.budgetRemaining}>
-                  {Math.max(100 - Math.round(percent), 0)}% remaining
-                </Text>
-                <Text style={styles.budgetPercent}>{Math.round(percent)}%</Text>
-              </View>
-              <View style={styles.budgetTrack}>
-                <View
-                  style={[
-                    styles.budgetFill,
-                    {
-                      width: `${Math.min(percent, 100)}%`,
-                      backgroundColor: color,
-                    },
-                  ]}
-                />
-              </View>
-            </View>
-          );
-        })}
-        {!budgets.length ? (
-          <Text style={styles.emptyText}>No budget data is available yet.</Text>
-        ) : null}
-      </SectionCard> : null}
+
     </View>
   );
 }

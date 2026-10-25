@@ -28,7 +28,7 @@ export function FinanceDataProvider({
   const active = useRef(true);
   const refresh = useCallback(async () => {
     if (!userId) return;
-    while (inFlight.current) await inFlight.current;
+    if (inFlight.current) return inFlight.current;
 
     const request = (async () => {
       useFinanceStore.getState().setLoading(true);
@@ -62,11 +62,6 @@ export function FinanceDataProvider({
         state.setTransactions([...unconfirmed, ...transactions]);
         state.setBudgets(budgets);
         state.setCategories(categories);
-        try {
-          saveAccountCache(userId, { transactions, budgets, categories });
-        } catch {
-          /* Live data remains available. */
-        }
         state.setSyncState(
           pending.length
             ? `Latest records downloaded; ${pending.length} transaction(s) awaiting upload confirmation.`
@@ -123,18 +118,18 @@ export function FinanceDataProvider({
     } catch {
       /* An unavailable cache must not prevent a network refresh. */
     }
-    const unsubscribe = useFinanceStore.subscribe((state) => {
-      if (userId && active.current) {
-        try {
-          saveAccountCache(userId, {
-            transactions: state.transactions,
-            budgets: state.budgets,
-            categories: state.categories,
-          });
-        } catch {
-          /* Cache is optional. */
-        }
-      }
+    let cacheTimer: ReturnType<typeof setTimeout> | undefined;
+    const writeCache = () => {
+      if (!userId || !active.current) return;
+      const state = useFinanceStore.getState();
+      try {
+        saveAccountCache(userId, { transactions: state.transactions, budgets: state.budgets, categories: state.categories });
+      } catch { /* Cache is optional; pending writes are durable in the outbox. */ }
+    };
+    const unsubscribe = useFinanceStore.subscribe((state, previous) => {
+      if (state.transactions === previous.transactions && state.budgets === previous.budgets && state.categories === previous.categories) return;
+      clearTimeout(cacheTimer);
+      cacheTimer = setTimeout(writeCache, 400);
     });
     void refresh();
     const interval = setInterval(() => {
@@ -144,6 +139,7 @@ export function FinanceDataProvider({
       if (state === 'active') void refresh();
     });
     return () => {
+      clearTimeout(cacheTimer);
       active.current = false;
       unsubscribe();
       clearInterval(interval);

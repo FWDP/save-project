@@ -1,15 +1,8 @@
+import { displayDate , validDate } from '@/lib/finance';
+import { Text, TextInput } from '@/components/accessible-text';
 import { DateField } from '@/components/date-field';
-import { validDate } from '@/lib/finance';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import {
-    Alert,
-    AppState,
-    Pressable,
-    StyleSheet,
-    Text,
-    TextInput,
-    View
-} from 'react-native';
+import { Alert, AppState, Pressable, StyleSheet, View } from 'react-native';
 
 import {
     FinancePage,
@@ -131,7 +124,7 @@ function SavingsScreen() {
 
   return (
     <FinancePage
-      title="Savings Goals"
+      title="Savings"
       subtitle="Plan and track your savings goals"
     >
       <Pressable
@@ -239,7 +232,7 @@ function SavingsScreen() {
 
                 <View style={localStyles.metaRow}>
                   <Text style={styles.rowMeta}>
-                    {goal.targetDate ? `Target: ${goal.targetDate}` : 'No deadline'}
+                    {goal.targetDate ? `Target: ${displayDate(goal.targetDate)}` : 'No deadline'}
                   </Text>
                 </View>
               </View>

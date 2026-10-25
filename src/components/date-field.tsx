@@ -1,6 +1,7 @@
+import { Text } from '@/components/accessible-text';
+import { displayDate , localDate, shiftMonth, validDate } from '@/lib/finance';
 import { useState } from 'react';
-import { Modal, Pressable, Text, View } from 'react-native';
-import { localDate, shiftMonth, validDate } from '@/lib/finance';
+import { Modal, Pressable, View } from 'react-native';
 export function DateField({
   value,
   onChange,
@@ -35,7 +36,7 @@ export function DateField({
         }}
       >
         <Text style={{ color: '#f4f7fb', fontSize: 16 }}>
-          {value || 'Choose date'}
+          {value ? displayDate(value) : 'mm/dd/yyyy'}
         </Text>
       </Pressable>
       <Modal

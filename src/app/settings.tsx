@@ -1,3 +1,9 @@
+import { readStatementPdf } from '@/lib/api';
+import { statementRows } from '@/lib/statement-import';
+import { exportReceiptZip } from '@/lib/receipt-zip';
+import { usePreferences, type TextSize } from '@/store/preferences-store';
+import { Text } from '@/components/accessible-text';
+import { displayDate , validDate } from '@/lib/finance';
 import {
     FinancePage,
     financePageStyles as styles,
@@ -18,7 +24,6 @@ import {
 import { clearAuthUser, getAuthUser, type AuthUser } from '@/lib/auth';
 import { exportFile } from '@/lib/export-file';
 import { exportPdf } from '@/lib/export-pdf';
-import { validDate } from '@/lib/finance';
 import {
     csvRows,
     importPreview,
@@ -27,15 +32,13 @@ import {
     type ImportRow,
 } from '@/lib/transfers';
 import { useFinanceStore } from '@/store/finance-store';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { CryptoDigestAlgorithm, digestStringAsync } from 'expo-crypto';
 import { File } from 'expo-file-system';
 import { useEffect, useState } from 'react';
-import { Alert, Appearance, Pressable, Switch, Text, View, useColorScheme } from 'react-native';
+import { Alert, Pressable, View } from 'react-native';
 
 function SettingsScreen() {
-  const systemColorScheme = useColorScheme();
-  const [darkMode, setDarkMode] = useState(systemColorScheme === 'dark');
+  const { textSize, setTextSize } = usePreferences();
   const [user, setUser] = useState<AuthUser | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
@@ -49,14 +52,6 @@ function SettingsScreen() {
   const refresh = useRefreshFinance();
   useEffect(() => {
     void getAuthUser().then(setUser);
-  }, []);
-  useEffect(() => {
-    void AsyncStorage.getItem('save.dark-mode').then((value) => {
-      if (value === null) return;
-      const enabled = value === 'true';
-      setDarkMode(enabled);
-      Appearance.setColorScheme(enabled ? 'dark' : 'light');
-    });
   }, []);
   const perform = async (fn: () => Promise<void>) => {
     if (busy) return;
@@ -95,15 +90,15 @@ function SettingsScreen() {
         'application/json',
       );
     });
-  const choose = (json: boolean) =>
+  const choose = (json: boolean, pdf = false) =>
     perform(async () => {
       const selected = await File.pickFileAsync({
-        mimeTypes: json
+        mimeTypes: pdf ? 'application/pdf' : json
           ? 'application/json'
           : ['text/csv', 'text/plain', 'text/comma-separated-values'],
       });
       if (selected.canceled) return;
-      const text = await selected.result.text();
+      const text = pdf ? await readStatementPdf(selected.result.uri) : await selected.result.text();
       let rows: ImportRow[];
       let importedCategories: ApiCategory[] = [];
       let importedBudgets: ApiBudget[] = [];
@@ -164,7 +159,7 @@ function SettingsScreen() {
             status: 'approved',
           };
         });
-      } else rows = csvRows(text);
+      } else rows = pdf ? statementRows(text) : csvRows(text);
       setPreview({
         ...importPreview(rows, useFinanceStore.getState().transactions),
         categories: importedCategories,
@@ -274,26 +269,22 @@ function SettingsScreen() {
         <Text style={styles.rowMeta}>{user?.email}</Text>
       </View>
       <View style={styles.card}>
-        <Text style={styles.cardTitle}>Appearance</Text>
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-          <Text style={styles.rowTitle}>Dark mode</Text>
-          <Switch
-            accessibilityLabel="Dark mode"
-            value={darkMode}
-            onValueChange={(enabled) => {
-              setDarkMode(enabled);
-              Appearance.setColorScheme(enabled ? 'dark' : 'light');
-              void AsyncStorage.setItem('save.dark-mode', String(enabled));
-            }}
-          />
+        <Text style={styles.cardTitle}>Text Size</Text>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+          {(['Small', 'Medium', 'Large'] as TextSize[]).map(size => (
+            <Pressable key={size} accessibilityRole="radio" accessibilityState={{ checked: textSize === size }}
+              onPress={() => perform(() => setTextSize(size))}
+              style={[styles.primaryButton, { backgroundColor: textSize === size ? '#55a6ff' : '#a1afc3' }]}>
+              <Text style={styles.primaryButtonText}>{size}</Text>
+            </Pressable>
+          ))}
         </View>
       </View>
       <View style={styles.card}>
         <Text style={styles.cardTitle}>Currency</Text>
         <Text style={styles.rowTitle}>PHP · Philippine Peso</Text>
         <Text style={styles.rowMeta}>
-          Personal finance amounts are recorded in PHP. Testnet vaults display
-          XLM separately.
+          Personal finance amounts are recorded in PHP.
         </Text>
       </View>
       <View style={styles.card}>
@@ -305,7 +296,7 @@ function SettingsScreen() {
             `save-transactions-${Date.now()}.pdf`,
             'SAVE Transactions',
             transactions.map((item) => [
-              `${item.date} · ${item.type.toUpperCase()} · ${item.description}`,
+              `${displayDate(item.date)} · ${item.type.toUpperCase()} · ${item.description}`,
               `${item.category} · ${item.merchant || 'No merchant'} · ₱${item.amount.toLocaleString('en-PH')}${item.customFields?.TIN ? ` · TIN ${item.customFields.TIN}` : ''}`,
             ]),
           ))}
@@ -323,6 +314,10 @@ function SettingsScreen() {
             )
           }
         />
+        <Button disabled={busy} label="Export receipt photos (.zip)" onPress={() => perform(async () => {
+          const result = await exportReceiptZip(transactions);
+          setMessage(`Exported ${result.saved} receipt photos.${result.missing ? ` ${result.missing} unavailable receipts listed in the ZIP manifest.` : ''}`);
+        })} />
         <Button
           disabled={busy}
           label="Export records backup"
@@ -336,6 +331,8 @@ function SettingsScreen() {
       </View>
       <View style={styles.card}>
         <Text style={styles.cardTitle}>Import transactions</Text>
+        <Button disabled={busy} label="Preview PDF import" onPress={() => choose(false, true)} />
+        <Text style={styles.rowMeta}>Text PDFs: Date, Description, Debit/Credit or Amount/Type columns. GCash transaction-history PDFs are supported, including multi-page statements. Protected or scanned PDFs need an unprotected text PDF or CSV.</Text>
         <Button
           disabled={busy}
           label="Preview CSV import"
@@ -367,7 +364,7 @@ function SettingsScreen() {
           </Text>
           {preview.rows.slice(0, 5).map((row, i) => (
             <Text key={i} style={styles.rowMeta}>
-              {row.date} · {row.description} · ₱{row.amount}
+              {displayDate(row.date)} · {row.description} · ₱{row.amount}
             </Text>
           ))}
           <Button

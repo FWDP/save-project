@@ -1,13 +1,6 @@
+import { Text, TextInput } from '@/components/accessible-text';
 import { useMemo, useState } from 'react';
-import {
-  Alert,
-  Modal,
-  Pressable,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { Alert, Modal, Pressable, StyleSheet, View } from 'react-native';
 
 import { FinancePage } from '@/components/layout/finance-page';
 import {
@@ -163,13 +156,6 @@ function CategoriesScreen() {
           <Text style={styles.empty}>No matching categories.</Text>
         ) : null}
       </View>
-      <Pressable
-        accessibilityLabel="Add category"
-        style={styles.fab}
-        onPress={() => launch()}
-      >
-        <Text style={styles.fabText}>＋</Text>
-      </Pressable>
       <Modal
         visible={open}
         transparent

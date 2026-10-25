@@ -1,5 +1,5 @@
 import type { ApiTransaction } from './api';
-import { validDate, validMoney } from './finance';
+import { validDate, validMoney, displayDate, importDate } from './finance';
 export type ImportRow = Omit<ApiTransaction, 'id' | 'userId' | 'syncState'>;
 export function parseCsv(text: string): string[][] {
   const rows: string[][] = [];
@@ -39,7 +39,7 @@ export function csvRows(text: string): ImportRow[] {
     const field = (name: string) => row[headers.indexOf(name)]?.trim() ?? '';
     const type = field('type') || 'expense';
     if (
-      !validDate(field('date')) ||
+      !validDate(importDate(field('date'))) ||
       !validMoney(Number(field('amount'))) ||
       !['expense', 'income'].includes(type)
     )
@@ -47,12 +47,13 @@ export function csvRows(text: string): ImportRow[] {
         `Invalid date, amount or type in CSV row ${index + 2}. No rows have been imported.`,
       );
     return {
-      date: field('date'),
+      date: importDate(field('date')),
       amount: Number(field('amount')),
       type: type as 'expense' | 'income',
       category: field('category') || 'Imported',
       description: field('description') || 'Imported transaction',
-      merchant: field('merchant'),
+      merchant: field('merchant or source') || field('merchant'),
+      customFields: { TIN: field('merchant or source tin') || field('tin'), ...(field('import source') === 'GCash' && field('reference no.') ? { 'Import Source': 'GCash', 'Reference No.': field('reference no.'), 'Transaction Time': field('transaction time') } : {}) },
       tags: field('tags').split('|').filter(Boolean),
       status: 'approved',
     };
@@ -61,9 +62,12 @@ export function csvRows(text: string): ImportRow[] {
 export function transactionFingerprint(
   row: Pick<
     ApiTransaction,
-    'date' | 'type' | 'amount' | 'category' | 'description' | 'merchant'
+    'date' | 'type' | 'amount' | 'category' | 'description' | 'merchant' | 'customFields'
   >,
 ) {
+  if (row.customFields?.['Import Source'] === 'GCash' && row.customFields['Reference No.']) {
+    return JSON.stringify(['GCash', row.customFields['Reference No.'], row.type]);
+  }
   return JSON.stringify([
     row.date,
     row.type,
@@ -93,16 +97,20 @@ export function transactionsCsv(rows: ApiTransaction[]) {
     return `"${(/^[=+\-@\t\r]/.test(text) ? "'" + text : text).replaceAll('"', '""')}"`;
   };
   return [
-    'date,type,amount,category,description,merchant,tags',
+    'date,type,amount,category,description,merchant or source,merchant or source tin,tags,import source,reference no.,transaction time',
     ...rows.map((row) =>
       [
-        row.date,
+        displayDate(row.date),
         row.type,
         row.amount,
         row.category,
         row.description,
         row.merchant,
+        row.customFields?.TIN,
         row.tags?.join('|'),
+        row.customFields?.['Import Source'],
+        row.customFields?.['Reference No.'],
+        row.customFields?.['Transaction Time'],
       ]
         .map(escape)
         .join(','),

@@ -1,8 +1,10 @@
+import { Text } from '@/components/accessible-text';
+import { displayDate } from '@/lib/finance';
 import { MonthPicker } from '@/components/month-picker';
 import { exportFile } from '@/lib/export-file';
 import { exportPdf } from '@/lib/export-pdf';
 import { useMemo, useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, View } from 'react-native';
 
 import { FinancePage } from '@/components/layout/finance-page';
 import { useAccountFinance } from '@/components/providers/account-finance';
@@ -176,7 +178,7 @@ function ReportsScreen() {
       rows.push([`${label} · Transaction details`, `${periodTransactions.length} records`]);
       for (const item of periodTransactions) {
         rows.push(
-          [`${label} · ${item.date} · ${item.description}`, `${item.type} · ${item.category} · ${item.merchant || 'No merchant'} · ${money(item.amount)}`],
+          [`${label} · ${displayDate(item.date)} · ${item.description}`, `${item.type} · ${item.category} · ${item.merchant || 'No merchant'} · Merchant or source TIN: ${item.customFields?.TIN || '—'} · ${money(item.amount)}`],
         );
       }
     }
@@ -202,14 +204,14 @@ function ReportsScreen() {
             style={[styles.tab, mode === 'compare' && styles.tabActive]}
             onPress={() => setMode('compare')}
           >
-            <Text style={styles.tabText}>Compare</Text>
+            <Text numberOfLines={1} style={styles.tabText}>Compare</Text>
           </Pressable>
         </View>
         <Pressable disabled={isLoading || !!syncError} style={styles.export} onPress={exportCsv}>
-          <Text style={styles.exportText}>⇩ Export CSV</Text>
+          <Text style={styles.exportText}>{'⇩ Export\nCSV'}</Text>
         </Pressable>
         <Pressable disabled={isLoading || !!syncError} style={styles.export} onPress={exportReportPdf}>
-          <Text style={styles.exportText}>⇩ Export PDF</Text>
+          <Text style={styles.exportText}>{'⇩ Export\nPDF'}</Text>
         </Pressable>
       </View>
 
@@ -336,7 +338,7 @@ function ReportTransactions({
           <View style={styles.transactionDetails}>
             <Text style={styles.transactionDescription}>{item.description}</Text>
             <Text style={styles.transactionMeta}>
-              {item.date} · {item.type} · {item.category}{item.merchant ? ` · ${item.merchant}` : ''}
+              {displayDate(item.date)} · {item.type} · {item.category}{item.merchant ? ` · ${item.merchant}` : ''}
             </Text>
           </View>
           <Text style={[styles.transactionAmount, item.type === 'income' && styles.incomeAmount]}>
@@ -453,17 +455,18 @@ const styles = StyleSheet.create({
     borderRadius: 9,
     overflow: 'hidden',
   },
-  tab: { flex: 1, alignItems: 'center', paddingVertical: 12 },
+  tab: { flex: 1, minWidth: 76, alignItems: 'center', paddingVertical: 12 },
   tabActive: { backgroundColor: '#5ca9ff' },
   tabText: { color: '#e6edf7', fontWeight: '700' },
   export: {
     borderWidth: 1,
     borderColor: '#263650',
     borderRadius: 9,
-    paddingHorizontal: 15,
+    paddingHorizontal: 9,
+    paddingVertical: 8,
     justifyContent: 'center',
   },
-  exportText: { color: '#e6edf7', fontWeight: '700' },
+  exportText: { textAlign: 'center', color: '#e6edf7', fontWeight: '700' },
   card: {
     backgroundColor: '#0d1629',
     borderWidth: 1,

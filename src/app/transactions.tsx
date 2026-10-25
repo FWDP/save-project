@@ -1,13 +1,7 @@
+import { displayDate } from '@/lib/finance';
+import { Text, TextInput } from '@/components/accessible-text';
 import { useMemo, useState } from 'react';
-import {
-  Pressable,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-  SectionList,
-  RefreshControl,
-} from 'react-native';
+import { Pressable, StyleSheet, View, SectionList, RefreshControl } from 'react-native';
 import { useRouter } from 'expo-router';
 import { FinancePage } from '@/components/layout/finance-page';
 import { MonthPicker } from '@/components/month-picker';
@@ -114,12 +108,7 @@ function TransactionsScreen() {
         }
         renderSectionHeader={({ section }) => (
           <Text style={styles.date}>
-            {new Date(`${section.title}T12:00:00`).toLocaleDateString('en-PH', {
-              weekday: 'short',
-              month: 'short',
-              day: 'numeric',
-              year: 'numeric',
-            })}
+            {displayDate(section.title)}
           </Text>
         )}
         renderItem={({ item }) => (
