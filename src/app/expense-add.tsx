@@ -261,6 +261,7 @@ function AddExpenseScreen() {
       {draft.receiptUri && !draft.tin.trim() && !analyzing ? <Text style={styles.help}>Merchant TIN was not read. Check the VAT/NON-VAT registration line on the receipt, enter it below, or retry the scan.</Text> : null}
       <Field
         label="Merchant or source TIN *"
+        help={draft.receiptUri ? 'Check each digit against the merchant registration line. Faint print can be misread; do not use the POS provider TIN.' : undefined}
         maxLength={40}
         value={draft.tin}
         onChangeText={(tin) => patchDraft({ tin })}
