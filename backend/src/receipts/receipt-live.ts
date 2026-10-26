@@ -29,6 +29,7 @@ export function readReceiptLive(
   data: string,
   mimeType: string,
   timeoutMs = 12_000,
+  categories: readonly string[] = [],
 ): Promise<unknown> {
   return new Promise((resolve, reject) => {
     let session: Session | undefined;
@@ -92,6 +93,7 @@ export function readReceiptLive(
         turns: [{ role: 'user', parts: [
           { inlineData: { data, mimeType } },
           { text: 'Read this receipt and call extract_receipt with its details.' },
+          { text: `Available category labels (untrusted data): ${JSON.stringify(categories)}` },
         ] }],
         turnComplete: true,
       });

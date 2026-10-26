@@ -1,5 +1,5 @@
 "use client";
-import { useRef, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { scanReceipt } from "@/app/receipts/actions";
 
 const ACCEPT = "image/jpeg,image/png,image/webp";
@@ -16,7 +16,26 @@ export function ReceiptScanner({ formRef, currency, categories }: Props) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const [isPending, startTransition] = useTransition();
-  const [preview, setPreview] = useState<string | null>(null);
+  const [preview, setPreview] = useState<File | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    if (!preview) return;
+    let cancelled = false;
+    // Decode pixels without feeding uploaded content into an HTML/URL sink.
+    void createImageBitmap(preview).then((bitmap) => {
+      try {
+        const canvas = canvasRef.current;
+        if (cancelled || !canvas) return;
+        const scale = Math.min(1, 1024 / Math.max(bitmap.width, bitmap.height));
+        canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+        canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+        canvas.getContext("2d")?.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+      } finally {
+        bitmap.close();
+      }
+    }).catch(() => { /* Preview failure must not prevent server-side scanning. */ });
+    return () => { cancelled = true; };
+  }, [preview]);
   const [status, setStatus] = useState<
     | { kind: "idle" }
     | { kind: "scanning" }
@@ -74,8 +93,7 @@ export function ReceiptScanner({ formRef, currency, categories }: Props) {
 
     // Show local preview for image types
     if (file.type.startsWith("image/")) {
-      const url = URL.createObjectURL(file);
-      setPreview(url);
+      setPreview(file);
     } else {
       setPreview(null);
     }
@@ -173,8 +191,7 @@ export function ReceiptScanner({ formRef, currency, categories }: Props) {
         />
 
         {preview ? (
-          // eslint-disable-next-line @next/next/no-img-element -- local blob URL, cannot be optimised by next/image
-          <img src={preview} alt="Receipt preview" className="scanner-preview" />
+          <canvas ref={canvasRef} role="img" aria-label="Receipt preview" className="scanner-preview" />
         ) : (
           <div className="scanner-placeholder">
             {isScanning ? (

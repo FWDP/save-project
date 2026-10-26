@@ -1,4 +1,4 @@
-import { readFileSync, statSync } from 'node:fs';
+import { closeSync, fstatSync, openSync, readFileSync } from 'node:fs';
 
 import { Keypair, TransactionBuilder } from '@stellar/stellar-sdk';
 
@@ -7,13 +7,18 @@ const SEP7_PREFIX = 'stellar.sep.7 - URI Scheme';
 export function loadIntegritySigner(secretFile?: string): Keypair | undefined {
   if (!secretFile) return undefined;
 
-  const stats = statSync(secretFile);
-  if (!stats.isFile()) throw new Error('STELLAR_INTEGRITY_SIGNER_SECRET_FILE must reference a regular file');
-  if (process.platform !== 'win32' && (stats.mode & 0o077) !== 0) {
-    throw new Error('Stellar integrity signer secret file must not be accessible by group or other users');
+  const fd = openSync(secretFile, 'r');
+  try {
+    // Validate and read the same opened file, even if its path is replaced.
+    const stats = fstatSync(fd);
+    if (!stats.isFile()) throw new Error('STELLAR_INTEGRITY_SIGNER_SECRET_FILE must reference a regular file');
+    if (process.platform !== 'win32' && (stats.mode & 0o077) !== 0) {
+      throw new Error('Stellar integrity signer secret file must not be accessible by group or other users');
+    }
+    return Keypair.fromSecret(readFileSync(fd, 'utf8').trim());
+  } finally {
+    closeSync(fd);
   }
-
-  return Keypair.fromSecret(readFileSync(secretFile, 'utf8').trim());
 }
 
 export function transactionHash(xdr: string, networkPassphrase: string): string {
