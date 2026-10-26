@@ -1,8 +1,8 @@
 import { Text } from '@/components/accessible-text';
-import { displayDate } from '@/lib/finance';
 import { MonthPicker } from '@/components/month-picker';
 import { exportFile } from '@/lib/export-file';
 import { exportPdf } from '@/lib/export-pdf';
+import { displayDate } from '@/lib/finance';
 import { useMemo, useState } from 'react';
 import { Alert, Pressable, StyleSheet, View } from 'react-native';
 
@@ -11,27 +11,24 @@ import { useAccountFinance } from '@/components/providers/account-finance';
 import { accountTransactionsCsv } from '@/lib/account-records';
 import type { ApiTransaction } from '@/lib/api';
 
-type PeriodKey = 'month' | 'lastMonth' | 'threeMonths' | 'sixMonths' | 'year';
-const PERIODS: { key: PeriodKey; label: string }[] = [
+type PeriodAKey = 'month' | 'threeMonths' | 'sixMonths' | 'year';
+type PeriodBKey = 'previousThisYear' | 'previousLastYear';
+const PERIODS: { key: PeriodAKey; label: string }[] = [
   { key: 'month', label: 'Selected month' },
-  { key: 'lastMonth', label: 'Previous month' },
   { key: 'threeMonths', label: 'Last 3 months' },
   { key: 'sixMonths', label: 'Last 6 months' },
   { key: 'year', label: 'Year to date' },
 ];
+const PERIOD_B_OPTIONS: { key: PeriodBKey; label: string }[] = [
+  { key: 'previousThisYear', label: 'Previous This Year' },
+  { key: 'previousLastYear', label: 'Previous Last Year' },
+];
 
-function rangeFor(key: PeriodKey, selectedMonth: string) {
+function rangeForA(key: PeriodAKey, selectedMonth: string) {
   const now = new Date(`${selectedMonth}-15T12:00:00`);
   const year = now.getFullYear();
   const month = now.getMonth();
 
-  if (key === 'lastMonth') {
-    const start = new Date(Date.UTC(year, month - 1, 1))
-      .toISOString()
-      .slice(0, 10);
-    const end = new Date(Date.UTC(year, month, 0)).toISOString().slice(0, 10);
-    return { start, end };
-  }
   if (key === 'threeMonths') {
     const start = new Date(Date.UTC(year, month - 2, 1))
       .toISOString()
@@ -62,8 +59,41 @@ function rangeFor(key: PeriodKey, selectedMonth: string) {
   return { start, end };
 }
 
-function inPeriod(item: ApiTransaction, key: PeriodKey, selectedMonth: string) {
-  const { start, end } = rangeFor(key, selectedMonth);
+function rangeForB(key: PeriodBKey, periodA: PeriodAKey, selectedMonth: string) {
+  const rangeA = rangeForA(periodA, selectedMonth);
+  const start = new Date(`${rangeA.start}T12:00:00Z`);
+  const end = new Date(`${rangeA.end}T12:00:00Z`);
+
+  if (key === 'previousLastYear') {
+    return {
+      start: new Date(Date.UTC(start.getUTCFullYear() - 1, start.getUTCMonth(), 1))
+        .toISOString()
+        .slice(0, 10),
+      end: new Date(Date.UTC(end.getUTCFullYear() - 1, end.getUTCMonth() + 1, 0))
+        .toISOString()
+        .slice(0, 10),
+    };
+  }
+
+  const durationMonths =
+    periodA === 'year'
+      ? end.getUTCMonth() + 1
+      : periodA === 'sixMonths'
+        ? 6
+        : periodA === 'threeMonths'
+          ? 3
+          : 1;
+  return {
+    start: new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() - durationMonths, 1))
+      .toISOString()
+      .slice(0, 10),
+    end: new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), 0))
+      .toISOString()
+      .slice(0, 10),
+  };
+}
+
+function inPeriod(item: ApiTransaction, start: string, end: string) {
   return item.date >= start && item.date <= end;
 }
 
@@ -114,20 +144,22 @@ function ReportsScreen() {
   const money = (value: number) => new Intl.NumberFormat('en-PH', { style: 'currency', currency }).format(value);
   const { transactions, selectedMonth } = useAccountFinance();
   const [mode, setMode] = useState<'single' | 'compare'>('single');
-  const [periodA, setPeriodA] = useState<PeriodKey>('month');
-  const [periodB, setPeriodB] = useState<PeriodKey>('lastMonth');
+  const [periodA, setPeriodA] = useState<PeriodAKey>('month');
+  const [periodB, setPeriodB] = useState<PeriodBKey>('previousThisYear');
+  const periodRangeA = rangeForA(periodA, selectedMonth);
+  const periodRangeB = rangeForB(periodB, periodA, selectedMonth);
 
   const periodTransactionsA = useMemo(
     () => transactions
-      .filter((item) => inPeriod(item, periodA, selectedMonth))
+      .filter((item) => inPeriod(item, periodRangeA.start, periodRangeA.end))
       .sort((left, right) => right.date.localeCompare(left.date)),
-    [periodA, transactions, selectedMonth],
+    [periodRangeA.start, periodRangeA.end, transactions],
   );
   const periodTransactionsB = useMemo(
     () => transactions
-      .filter((item) => inPeriod(item, periodB, selectedMonth))
+      .filter((item) => inPeriod(item, periodRangeB.start, periodRangeB.end))
       .sort((left, right) => right.date.localeCompare(left.date)),
-    [periodB, transactions, selectedMonth],
+    [periodRangeB.start, periodRangeB.end, transactions],
   );
   const a = useMemo(
     () => stats(periodTransactionsA),
@@ -146,7 +178,7 @@ function ReportsScreen() {
 
   const exportCsv = async () => {
     if (isLoading || syncError) return;
-    const csv = accountTransactionsCsv(transactions.filter(item => inPeriod(item, periodA, selectedMonth)), currency);
+    const csv = accountTransactionsCsv(transactions.filter(item => inPeriod(item, periodRangeA.start, periodRangeA.end)), currency);
 
     try {
       await exportFile(`save-report-${periodA}.csv`, csv, 'text/csv');
@@ -165,7 +197,7 @@ function ReportsScreen() {
       : [[periodA, a, PERIODS.find((item) => item.key === periodA)?.label ?? 'Period'] ] as const;
     for (const [key, summary, label] of periods) {
       rows.push(
-        [`${label} · Period`, PERIODS.find((item) => item.key === key)?.label ?? key],
+        [`${label} · Period`, PERIODS.find((item) => item.key === key)?.label ?? PERIOD_B_OPTIONS.find((item) => item.key === key)?.label ?? key],
         [`${label} · Total spent`, money(summary.total)],
         [`${label} · Transactions`, String(summary.count)],
         [`${label} · Average`, money(summary.average)],
@@ -220,10 +252,10 @@ function ReportsScreen() {
       ) : (
         <View style={styles.card}>
           <Text style={styles.periodLabel}>PERIOD A</Text>
-          <PeriodButtons value={periodA} onChange={setPeriodA} />
+          <PeriodButtons options={PERIODS} value={periodA} onChange={setPeriodA} />
           <View style={styles.divider} />
           <Text style={styles.periodLabel}>PERIOD B</Text>
-          <PeriodButtons value={periodB} onChange={setPeriodB} />
+          <PeriodButtons options={PERIOD_B_OPTIONS} value={periodB} onChange={setPeriodB} />
         </View>
       )}
 
@@ -356,27 +388,29 @@ function SinglePeriod({
   value,
   onChange,
 }: {
-  value: PeriodKey;
-  onChange: (value: PeriodKey) => void;
+  value: PeriodAKey;
+  onChange: (value: PeriodAKey) => void;
 }) {
   return (
     <View style={styles.card}>
       <Text style={styles.periodLabel}>PERIOD</Text>
-      <PeriodButtons value={value} onChange={onChange} />
+      <PeriodButtons options={PERIODS} value={value} onChange={onChange} />
     </View>
   );
 }
 
-function PeriodButtons({
+function PeriodButtons<Key extends string>({
+  options,
   value,
   onChange,
 }: {
-  value: PeriodKey;
-  onChange: (value: PeriodKey) => void;
+  options: readonly { key: Key; label: string }[];
+  value: Key;
+  onChange: (value: Key) => void;
 }) {
   return (
     <View style={styles.periods}>
-      {PERIODS.map((period) => (
+      {options.map((period) => (
         <Pressable
           key={period.key}
           style={[styles.pill, value === period.key && styles.pillActive]}
