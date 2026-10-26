@@ -66,6 +66,9 @@ export function LiveConversion({
     };
   }, [currency, target, query, refresh]);
   const data = result.data;
+  const exportParams = new URLSearchParams(query);
+  exportParams.set("target", target);
+  const exportHref = `/reports/export?${exportParams.toString()}`;
   return (
     <section className="panel" style={{ marginBottom: 24 }}>
       <div className="panel-heading">
@@ -142,7 +145,7 @@ export function LiveConversion({
                 </dl>
                 <a
                   className="button secondary"
-                  href={`/reports/export?${query}&target=${target}`}
+                  href={exportHref}
                 >
                   Export converted summary
                 </a>
