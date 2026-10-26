@@ -37,6 +37,7 @@
     "expo-web-browser": "~57.0.2",
     "fflate": "^0.8.3",
     "jspdf": "^4.2.1",
+    "next": ">=16.4.1",
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "react-native": "0.86.3",
@@ -47,6 +48,7 @@
     "react-native-screens": "~4.26.0",
     "react-native-web": "~0.21.0",
     "react-native-worklets": "0.10.1",
+    "shell-quote": ">=1.11.0",
     "zustand": "^5.0.15"
   },
   "devDependencies": {
