@@ -189,10 +189,14 @@ export function clearPrivateCache() {
   );
 }
 
-export function pendingTransactions(userId: string): ApiTransaction[] {
+function ensureOutboxTable() {
   db.execSync(
     'CREATE TABLE IF NOT EXISTS transaction_outbox (id TEXT PRIMARY KEY, userId TEXT NOT NULL, payload TEXT NOT NULL)',
   );
+}
+
+export function pendingTransactions(userId: string): ApiTransaction[] {
+  ensureOutboxTable();
   return db
     .getAllSync<{ payload: string }>(
       'SELECT payload FROM transaction_outbox WHERE userId = ?',
@@ -204,7 +208,8 @@ export function enqueueTransaction(
   userId: string,
   transaction: ApiTransaction,
 ) {
-  pendingTransactions(userId);
+  // Initialize without reading and parsing every earlier queued receipt.
+  ensureOutboxTable();
   db.runSync(
     'INSERT INTO transaction_outbox (id, userId, payload) VALUES (?, ?, ?)',
     [transaction.id, userId, JSON.stringify(transaction)],

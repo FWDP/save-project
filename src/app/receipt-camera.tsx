@@ -26,7 +26,7 @@ function ReceiptCameraScreen() {
     if (!camera.current || capturing) return;
     setCapturing(true);
     try {
-      const photo = await camera.current.takePictureAsync({ quality: 0.8, shutterSound: true });
+      const photo = await camera.current.takePictureAsync({ quality: 0.8, shutterSound: false });
       if (photo?.uri) setPhotoUri(photo.uri);
     } catch {
       Alert.alert(

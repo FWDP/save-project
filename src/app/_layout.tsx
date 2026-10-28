@@ -75,6 +75,7 @@ export default function TabLayout() {
         <Stack
           screenOptions={{
             headerShown: false,
+            orientation: 'default',
             contentStyle: { backgroundColor: '#070d1a' },
           }}
         >

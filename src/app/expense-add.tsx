@@ -84,11 +84,10 @@ function AddExpenseScreen() {
       !draft.category.trim() ||
       !draft.description.trim() ||
       !draft.merchant.trim() ||
-      !draft.tin.trim() ||
       !Number.isFinite(amount) ||
       amount <= 0
     ) {
-      setMessage('Date, amount, category, description, merchant or source, and merchant or source TIN are required.');
+      setMessage('Date, amount, category, description, and merchant or source are required.');
       return;
     }
     setSaving(true);
@@ -260,7 +259,7 @@ function AddExpenseScreen() {
       />
       {draft.receiptUri && !draft.tin.trim() && !analyzing ? <Text style={styles.help}>Merchant TIN was not read. Check the VAT/NON-VAT registration line on the receipt, enter it below, or retry the scan.</Text> : null}
       <Field
-        label="Merchant or source TIN *"
+        label="Merchant or source TIN (optional)"
         help={draft.receiptUri ? 'Check each digit against the merchant registration line. Faint print can be misread; do not use the POS provider TIN.' : undefined}
         maxLength={40}
         value={draft.tin}
