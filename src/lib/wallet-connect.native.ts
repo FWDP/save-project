@@ -61,7 +61,7 @@ async function getClient() {
   clientPromise ??= SignClient.init({
     projectId: config.projectId,
     metadata: {
-      name: 'SAVE Finance',
+      name: 'SAVE',
       description: 'Non-custodial Stellar Testnet savings goals',
       url: config.metadataUrl,
       icons: config.usingDefaultMetadata
@@ -156,6 +156,6 @@ export async function disconnectStellarWallet(session: StellarWalletConnectSessi
   if (!client.session.keys.includes(session.topic)) return;
   await client.disconnect({
     topic: session.topic,
-    reason: { code: 6000, message: 'User disconnected SAVE Finance' },
+    reason: { code: 6000, message: 'User disconnected SAVE' },
   });
 }

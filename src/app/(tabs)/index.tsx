@@ -1,4 +1,5 @@
 import { Text } from '@/components/accessible-text';
+import { SaveLogo } from '@/components/save-logo';
 import { SaveDashboard } from '@/components/dashboard/save-dashboard';
 import { MonthPicker } from '@/components/month-picker';
 import { AppSidebar } from '@/components/navigation/app-sidebar';
@@ -27,7 +28,8 @@ export default function DashboardScreen() {
         <Pressable accessibilityLabel="Open navigation" style={styles.iconButton} onPress={() => setSidebarOpen(true)}>
           <Text style={styles.iconText}>☰</Text>
         </Pressable>
-<View style={{ flex: 1 }}><Text style={{ color: '#f4f7fb', fontSize: 18, fontWeight: '800' }}>SAVE · My finances</Text></View>
+        <SaveLogo size={32} />
+        <View style={{ flex: 1 }}><Text style={{ color: '#f4f7fb', fontSize: 18, fontWeight: '800' }}>SAVE · My finances</Text></View>
         <Pressable accessibilityLabel="Transactions" style={{ padding: 12 }} onPress={openRecords}>
           <Text style={{ color: '#75b6ff' }}>Records</Text>
         </Pressable>

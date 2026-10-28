@@ -1,5 +1,6 @@
 import { Text, TextInput } from '@/components/accessible-text';
 import { FinancePage } from '@/components/layout/finance-page';
+import { SaveLogo } from '@/components/save-logo';
 import {
     authConfigured,
     authRedirect,
@@ -90,6 +91,9 @@ export default function OnboardingScreen() {
       showSync={false}
     >
       <View style={styles.card}>
+        <View style={{ alignItems: 'center', marginBottom: 16 }}>
+          <SaveLogo size={88} />
+        </View>
         <Text style={styles.title}>
           {signup ? 'Create your account' : 'Sign in'}
         </Text>

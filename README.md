@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="assets/images/icon.png" alt="SAVE Finance logo" width="120" />
+  <img src="assets/images/save-logo.jpg" alt="SAVE logo" width="120" />
 </p>
 
-# SAVE Finance
+# SAVE
 
 [![Verify SAVE](https://github.com/FWDP/save-project/actions/workflows/verify.yml/badge.svg)](https://github.com/FWDP/save-project/actions/workflows/verify.yml)
 

@@ -1,4 +1,5 @@
 import { Text } from '@/components/accessible-text';
+import { SaveLogo } from '@/components/save-logo';
 import { type Href, usePathname, useRouter } from 'expo-router';
 import { Modal, Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
 
@@ -34,8 +35,8 @@ export function AppSidebar({ visible, onClose }: AppSidebarProps) {
         <Pressable accessibilityLabel="Close navigation" style={styles.scrim} onPress={onClose} />
         <View style={[styles.drawer, { width: drawerWidth }]}>
           <View style={styles.brandRow}>
-            <View style={styles.brandIcon}><Text style={styles.brandIconText}>▧</Text></View>
-            <Text style={styles.brandTitle}>SAVE Finance</Text>
+            <SaveLogo />
+            <Text style={styles.brandTitle}>SAVE</Text>
             <Pressable accessibilityLabel="Close navigation" style={styles.closeButton} onPress={onClose}>
               <Text style={styles.closeText}>×</Text>
             </Pressable>
@@ -73,8 +74,6 @@ const styles = StyleSheet.create({
   scrim: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(0, 4, 12, 0.76)' },
   drawer: { height: '100%', backgroundColor: '#0d172d', borderRightWidth: 1, borderRightColor: '#1a2943', shadowColor: '#000', shadowOpacity: 0.45, shadowRadius: 18, shadowOffset: { width: 8, height: 0 }, elevation: 20 },
   brandRow: { minHeight: 112, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 17, paddingTop: 22 },
-  brandIcon: { width: 48, height: 48, borderRadius: 12, backgroundColor: '#61a9f8', alignItems: 'center', justifyContent: 'center' },
-  brandIconText: { color: '#07111f', fontSize: 25, fontWeight: '800' },
   brandTitle: { color: '#f1f5fb', fontSize: 18, fontWeight: '800', marginLeft: 13, flex: 1 },
   closeButton: { width: 38, height: 38, alignItems: 'center', justifyContent: 'center' },
   closeText: { color: '#91a0ba', fontSize: 34, fontWeight: '300', lineHeight: 36 },
