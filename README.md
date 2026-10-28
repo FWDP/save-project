@@ -234,11 +234,13 @@ Run the complete local verification gate from the repository root:
 npm run verify
 ```
 
-Verify the live Testnet services, deployed contract, and exact Wasm hash:
+Optionally verify the live Testnet services, deployed contract, and exact Wasm hash:
 
 ```bash
 npm run health:testnet
 ```
+
+In GitHub Actions, **Deployed Testnet health** is skipped by default. To run it once, select **Actions → Verify SAVE → Run workflow** and check **Run the optional deployed Testnet health check**. To enable it on the daily schedule, set the repository Actions variable `ENABLE_TESTNET_HEALTH` to `true`; leave it unset or set it to `false` to keep scheduled health checks disabled. The other verification jobs run as usual.
 
 After starting the API and admin app, add `--services` to verify their connectivity. The contract artifact is written to `contract/target/wasm32v1-none/release/save_savings_vault.wasm`. See the [reviewer runbook](docs/REVIEWER_RUNBOOK.md) for the clean-checkout process and the [Deliverable 4 evidence package](docs/DELIVERABLE_4_EVIDENCE.md) for expected outputs.
 

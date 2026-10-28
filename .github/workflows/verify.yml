@@ -5,6 +5,12 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      run_testnet_health:
+        description: Run the optional deployed Testnet health check
+        required: false
+        default: false
+        type: boolean
   schedule:
     - cron: '17 3 * * *'
 
@@ -96,7 +102,9 @@ jobs:
 
   testnet-health:
     name: Deployed Testnet health
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    if: >-
+      (github.event_name == 'workflow_dispatch' && inputs.run_testnet_health) ||
+      (github.event_name == 'schedule' && vars.ENABLE_TESTNET_HEALTH == 'true')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
