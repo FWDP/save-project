@@ -6,13 +6,17 @@
 
 [![Verify SAVE](https://github.com/FWDP/save-project/actions/workflows/verify.yml/badge.svg)](https://github.com/FWDP/save-project/actions/workflows/verify.yml)
 
-### Personal finance and goal-based saving, with optional Stellar rails
+### Personal finance and goal-based saving
+
+> **Launch update — November 4, 2026:** financial records and photos are stored locally; receipt reading uses an external AI service. Database finance sync and application blockchain operations are disabled. Historical Stellar features and screenshots below document earlier alpha work. See the [project handbook](docs/SAVE.md) for the current architecture, OCR privacy findings, setup and qualification.
+
+### Historical Stellar alpha overview
 
 Track spending. Plan budgets. Build savings on Stellar Testnet without giving up custody of your wallet.
 
 SAVE brings everyday money management, receipt capture, savings goals, and externally signed Stellar transactions into one mobile-first workspace. A NestJS API supports the app, while a Next.js dashboard provides an operational view.
 
-[Explore the repository](https://github.com/FWDP/save-project) · [Reviewer runbook](docs/REVIEWER_RUNBOOK.md) · [Stellar architecture](docs/STELLAR_ARCHITECTURE.md) · [Verification evidence](docs/DELIVERABLE_4_EVIDENCE.md)
+[Explore the repository](https://github.com/FWDP/save-project) · [Reviewer runbook](docs/SAVE.md#verification-runbook) · [Stellar architecture](docs/SAVE.md#historical-stellar-architecture) · [Verification evidence](docs/SAVE.md#historical-deliverable-4-evidence)
 
 > [!IMPORTANT]
 > SAVE's blockchain features are alpha software for **Stellar Testnet only**. The project does not support Mainnet or real-value custody. SAVE never asks for or stores a wallet secret seed; an external wallet must approve every transaction.
@@ -142,12 +146,9 @@ These are public Testnet identifiers, not credentials. Deployments may be replac
 
 ## Current implementation update
 
-The mobile app now includes authenticated personal records, shared month selection, editable transactions and budgets, durable pending transaction uploads, receipt attachments, and reviewed imports/file exports. Configure the hosted sign-in provider before using the app; the former local demo profile is no longer authentication.
+The launch app uses account-isolated local financial records, receipt attachments, external OCR and reviewed import/export flows. Authentication remains server-backed. New records do not synchronize between Web and Mobile.
 
-- [Authentication setup and migration notes](docs/AUTH_SETUP.md)
-- [MongoDB to Supabase Postgres migration record](docs/MONGO_TO_SUPABASE_MIGRATION.md)
-- [Mobile implementation and validation](docs/MOBILE_IMPROVEMENTS.md)
-- [SAVE Web personal/business implementation plan](docs/SAVE_WEB_IMPLEMENTATION_PLAN.md)
+See the consolidated [S.A.V.E. Project Handbook](docs/SAVE.md) for setup, storage/reset behavior, receipt processing, provider privacy findings, verification, and historical migration/contract evidence.
 
 ## 🚀 Run SAVE Locally
 
@@ -242,13 +243,13 @@ npm run health:testnet
 
 In GitHub Actions, **Deployed Testnet health** is skipped by default. To run it once, select **Actions → Verify SAVE → Run workflow** and check **Run the optional deployed Testnet health check**. To enable it on the daily schedule, set the repository Actions variable `ENABLE_TESTNET_HEALTH` to `true`; leave it unset or set it to `false` to keep scheduled health checks disabled. The other verification jobs run as usual.
 
-After starting the API and admin app, add `--services` to verify their connectivity. The contract artifact is written to `contract/target/wasm32v1-none/release/save_savings_vault.wasm`. See the [reviewer runbook](docs/REVIEWER_RUNBOOK.md) for the clean-checkout process and the [Deliverable 4 evidence package](docs/DELIVERABLE_4_EVIDENCE.md) for expected outputs.
+After starting the API and admin app, add `--services` to verify their connectivity. The contract artifact is written to `contract/target/wasm32v1-none/release/save_savings_vault.wasm`. See the [reviewer runbook](docs/SAVE.md#verification-runbook) for the clean-checkout process and the [Deliverable 4 evidence package](docs/SAVE.md#historical-deliverable-4-evidence) for expected outputs.
 
 ## 🚢 Deploy the Savings Vault
 
 Contract deployment is an explicit operator action. Use a funded Stellar CLI identity—never put its secret key in a command, environment file, application, or repository.
 
-Read the [contract deployment guide](docs/CONTRACT.md) before deploying. It documents the build artifact, immutable Native XLM SAC constructor allowlist, current Wasm hash, deployment command, and configuration update.
+Read the [contract deployment guide](docs/SAVE.md#contract-reference) before deploying. It documents the build artifact, immutable Native XLM SAC constructor allowlist, current Wasm hash, deployment command, and configuration update.
 
 > [!CAUTION]
 > A working Testnet deployment is not evidence of Mainnet readiness. Independent review, stronger invariant testing, recovery procedures, key custody, asset allowlists, operational controls, and legal review are required before real-value use.
@@ -272,12 +273,7 @@ Read the [contract deployment guide](docs/CONTRACT.md) before deploying. It docu
 
 ## 📚 Documentation
 
-- [Stellar architecture](docs/STELLAR_ARCHITECTURE.md) — network decisions, trust boundaries, reconciliation, and non-goals.
-- [Savings vault contract](docs/CONTRACT.md) — interface, events, deployment, and security review.
-- [Deliverables 1–2 test report](docs/DELIVERABLES_1_2_TEST_REPORT.md) — acceptance evidence and repeatable verification.
-- [Deliverable 4 evidence](docs/DELIVERABLE_4_EVIDENCE.md) — CI matrix, deployed contract proof, health checks, and negative-path coverage.
-- [Independent reviewer runbook](docs/REVIEWER_RUNBOOK.md) — clean-checkout setup and end-to-end verification.
-- [Combined Stellar implementation](docs/COMBINED_SOROBAN_STELLAR_IMPLEMENTATION.md) — implementation context across the app, API, and contract.
+The [S.A.V.E. Project Handbook](docs/SAVE.md) contains the current launch architecture, authentication setup, local storage and testing reset, OCR security/privacy review, release verification, migration history, deferred scope, and historical Stellar contract evidence.
 
 ## ⚠️ Alpha Boundaries
 
@@ -301,6 +297,6 @@ This repository includes an [MIT license](LICENSE).
 
 ## Customer Web application
 
-The first SAVE Web slice lives in `web/`: personal/business workspaces, transactions, overview and reports. Run `npm run web:dev` on port 3002 after following [Web setup](web/README.md). The existing `npm run web` command remains the Expo browser preview.
+The customer app lives in `web/` and provides local transactions, budgets, categories, savings trackers and reports. Run `npm run web:dev` on port 3002 after following [Web setup](web/README.md). `npm run web` remains the Expo browser preview.
 
-Web sign-in and persistent records require the configured Supabase Auth project, Supabase Postgres, and NestJS API. Ownerless legacy rows are preserved in the private migration quarantine for operator review. See the [implementation status and migration notes](docs/MONGO_TO_SUPABASE_MIGRATION.md).
+Sign-in uses Supabase Auth. Receipt reading uses the authenticated NestJS API and Google's Gemini service. Financial records and photos remain in the browser's local storage, subject to the separate provider processing/retention terms described in the [project handbook](docs/SAVE.md#ocr-security-and-privacy-review).
