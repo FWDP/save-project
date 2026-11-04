@@ -11,7 +11,7 @@ const context = (path, authorization) => ({
   }),
 });
 
-test('private finance routes require authentication', async () => {
+test('private finance routes are disabled before accessing authentication or databases', async () => {
   for (const route of [
     '/ledger/transactions',
     '/ledger/reports/converted',
@@ -19,13 +19,14 @@ test('private finance routes require authentication', async () => {
     '/budgets',
     '/categories',
     '/savings-goals',
-    '/users',
     '/receipts',
     '/stellar/vault/prepare',
   ])
     await assert.rejects(new AuthGuard().canActivate(context(route)), {
-      status: 401,
+      status: 410,
     });
+  await assert.rejects(new AuthGuard().canActivate(context('/users')), { status: 401 });
+  await assert.rejects(new AuthGuard().canActivate(context('/receipts/scan')), { status: 401 });
   assert.equal(await new AuthGuard().canActivate(context('/health')), true);
 });
 test('identity comes from verified provider response, never caller body', async () => {
@@ -38,22 +39,19 @@ test('identity comes from verified provider response, never caller body', async 
     ok: true,
     json: async () => ({
       id: 'verified-owner',
-      app_metadata: { role: 'user' },
+      app_metadata: { role: 'admin' },
     }),
   });
   try {
     await authContext.run({}, async () => {
       assert.equal(
         await new AuthGuard().canActivate(
-          context('/transactions', 'Bearer test'),
+          context('/users', 'Bearer test'),
         ),
         true,
       );
       assert.equal(authContext.getStore().userId, 'verified-owner');
-      await assert.rejects(
-        new AuthGuard().canActivate(context('/users', 'Bearer test')),
-        { status: 403 },
-      );
+      assert.equal(await new AuthGuard().canActivate(context('/receipts/scan', 'Bearer test')), true);
     });
   } finally {
     global.fetch = original;

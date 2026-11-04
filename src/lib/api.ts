@@ -1,3 +1,4 @@
+import { addLocal, updateLocal, deleteLocal, localRecords } from './local-finance';
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 import { accessToken } from './auth';
@@ -193,50 +194,9 @@ async function apiFetch(url: string, options?: RequestInit, timeoutMs = 30_000, 
   }
 }
 
-export async function fetchTransactions(): Promise<ApiTransaction[]> {
-  const url = `${getApiBaseUrl()}/transactions`;
-  const response = await apiFetch(url, {
-    headers: { Authorization: `Bearer ${await accessToken()}` },
-  });
-
-  if (!response.ok) {
-    throw new Error(
-      `Unable to load transactions from ${url} (HTTP ${response.status})`,
-    );
-  }
-
-  return response.json() as Promise<ApiTransaction[]>;
-}
-
-export async function fetchBudgets(): Promise<ApiBudget[]> {
-  const url = `${getApiBaseUrl()}/budgets`;
-  const response = await apiFetch(url, {
-    headers: { Authorization: `Bearer ${await accessToken()}` },
-  });
-
-  if (!response.ok) {
-    throw new Error(
-      `Unable to load budgets from ${url} (HTTP ${response.status})`,
-    );
-  }
-
-  return response.json() as Promise<ApiBudget[]>;
-}
-
-export async function fetchCategories(): Promise<ApiCategory[]> {
-  const url = `${getApiBaseUrl()}/categories`;
-  const response = await apiFetch(url, {
-    headers: { Authorization: `Bearer ${await accessToken()}` },
-  });
-
-  if (!response.ok) {
-    throw new Error(
-      `Unable to load categories from ${url} (HTTP ${response.status})`,
-    );
-  }
-
-  return response.json() as Promise<ApiCategory[]>;
-}
+export async function fetchTransactions(): Promise<ApiTransaction[]> { return localRecords('transactions'); }
+export async function fetchBudgets(): Promise<ApiBudget[]> { return localRecords('budgets'); }
+export async function fetchCategories(): Promise<ApiCategory[]> { return localRecords('categories'); }
 
 async function apiError(response: Response, path: string) {
   let detail = '';
@@ -257,6 +217,7 @@ async function apiError(response: Response, path: string) {
 }
 
 async function postJson<T>(path: string, payload: unknown, expectedOwner?: string): Promise<T> {
+  if (path.startsWith('/stellar')) throw new Error('Blockchain operations are disabled while financial data stays on this device.');
   const url = `${getApiBaseUrl()}${path}`;
   const response = await apiFetch(url, {
     method: 'POST',
@@ -273,87 +234,42 @@ async function postJson<T>(path: string, payload: unknown, expectedOwner?: strin
 export function createBudget(
   payload: Omit<ApiBudget, 'id' | 'spent'> & { spent?: number },
 ) {
-  return postJson<ApiBudget>('/budgets', payload);
+  return addLocal('budgets', { ...payload, spent: payload.spent ?? 0 });
 }
 
 export function createCategory(payload: Omit<ApiCategory, 'id'>) {
-  return postJson<ApiCategory>('/categories', payload);
-}
-
-async function mutateJson<T>(
-  path: string,
-  method: 'PATCH' | 'DELETE',
-  payload?: unknown,
-): Promise<T> {
-  const url = `${getApiBaseUrl()}${path}`;
-  const response = await apiFetch(url, {
-    method,
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${await accessToken()}`,
-    },
-    body: payload ? JSON.stringify(payload) : undefined,
-  });
-  if (!response.ok) throw await apiError(response, path);
-  return response.json() as Promise<T>;
+  return addLocal('categories', payload);
 }
 
 export function updateCategory(
   id: string,
   payload: Partial<Omit<ApiCategory, 'id'>>,
 ) {
-  return mutateJson<ApiCategory>(`/categories/${id}`, 'PATCH', payload);
+  return updateLocal('categories', id, payload);
 }
 
 export function deleteCategory(id: string) {
-  return mutateJson<{ deleted: boolean }>(`/categories/${id}`, 'DELETE');
+  return deleteLocal('categories', id);
 }
 
 export function deleteTransaction(id: string) {
-  return mutateJson<{ deleted: boolean }>(`/transactions/${id}`, 'DELETE');
+  return deleteLocal('transactions', id);
 }
 
-export async function fetchSavingsGoals(): Promise<ApiSavingsGoal[]> {
-  const url = `${getApiBaseUrl()}/savings-goals`;
-  const response = await apiFetch(url, {
-    headers: { Authorization: `Bearer ${await accessToken()}` },
-  });
-  if (!response.ok)
-    throw new Error(
-      `Unable to load savings goals from ${url} (HTTP ${response.status})`,
-    );
-  return response.json() as Promise<ApiSavingsGoal[]>;
-}
-
+export async function fetchSavingsGoals(): Promise<ApiSavingsGoal[]> { return localRecords('goals'); }
 export async function fetchSavingsGoal(id: string): Promise<ApiSavingsGoal> {
-  const url = `${getApiBaseUrl()}/savings-goals/${id}`;
-  const response = await apiFetch(url, {
-    headers: { Authorization: `Bearer ${await accessToken()}` },
-  });
-  if (!response.ok)
-    throw new Error(`Unable to load savings goal ${id} from ${url}`);
-  return response.json() as Promise<ApiSavingsGoal>;
+  const goal = (await fetchSavingsGoals()).find(row => row.id === id);
+  if (!goal) throw new Error('Savings goal not found on this device.');
+  return goal;
 }
-
-export function createSavingsGoal(
-  payload: Partial<Omit<ApiSavingsGoal, 'id'>> &
-    Pick<ApiSavingsGoal, 'name' | 'targetAmount'>,
-) {
-  return postJson<ApiSavingsGoal>('/savings-goals', payload);
+export function createSavingsGoal(payload: Partial<Omit<ApiSavingsGoal, 'id'>> & Pick<ApiSavingsGoal, 'name' | 'targetAmount'>) {
+  return addLocal('goals', { fundedAmount: 0, asset: 'PHP', status: 'draft', ...payload });
 }
-
-export function updateSavingsGoal(
-  id: string,
-  payload: Partial<Omit<ApiSavingsGoal, 'id'>>,
-) {
-  return mutateJson<ApiSavingsGoal>(`/savings-goals/${id}`, 'PATCH', payload);
-}
-
-export function deleteSavingsGoal(id: string) {
-  return mutateJson<{ deleted: boolean }>(`/savings-goals/${id}`, 'DELETE');
-}
+export function updateSavingsGoal(id: string, payload: Partial<Omit<ApiSavingsGoal, 'id'>>) { return updateLocal('goals', id, payload); }
+export function deleteSavingsGoal(id: string) { return deleteLocal('goals', id); }
 
 async function getJson<T>(path: string): Promise<T> {
+  if (path.startsWith('/stellar')) throw new Error('Blockchain operations are disabled while financial data stays on this device.');
   const response = await apiFetch(`${getApiBaseUrl()}${path}`, {
     headers: { Authorization: `Bearer ${await accessToken()}` },
   });
@@ -441,42 +357,24 @@ export function submitStellarTransaction(payload: {
   );
 }
 
-export async function createTransaction(
-  payload: Omit<ApiTransaction, 'id'>,
-): Promise<ApiTransaction> {
-  const url = `${getApiBaseUrl()}/transactions`;
-  const response = await apiFetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${await accessToken(payload.userId)}`,
-    },
-    body: JSON.stringify(payload),
-  });
-
-  if (!response.ok) {
-    throw new Error(
-      `Unable to save transaction to ${url} (HTTP ${response.status})`,
-    );
-  }
-
-  return response.json() as Promise<ApiTransaction>;
+export async function createTransaction(payload: Omit<ApiTransaction, 'id'>): Promise<ApiTransaction> {
+  return addLocal('transactions', payload);
 }
 
 export function updateTransaction(
   id: string,
   payload: Partial<Omit<ApiTransaction, 'id' | 'userId'>>,
 ) {
-  return mutateJson<ApiTransaction>(`/transactions/${id}`, 'PATCH', payload);
+  return updateLocal('transactions', id, payload);
 }
 export function updateBudget(
   id: string,
   payload: Partial<Pick<ApiBudget, 'category' | 'limit' | 'period'>>,
 ) {
-  return mutateJson<ApiBudget>(`/budgets/${id}`, 'PATCH', payload);
+  return updateLocal('budgets', id, payload);
 }
 export function deleteBudget(id: string) {
-  return mutateJson<{ deleted: boolean }>(`/budgets/${id}`, 'DELETE');
+  return deleteLocal('budgets', id);
 }
 
 export type ApiParsedReceipt = {
@@ -542,25 +440,6 @@ export async function scanReceiptWithAi(
   return response.json() as Promise<ApiParsedReceipt>;
 }
 
-export async function readStatementPdf(uri: string): Promise<string> {
-  const token = await accessToken();
-  const body = new FormData();
-  let send = fetch;
-  if (Platform.OS === 'web') {
-    const response = await fetch(uri);
-    if (!response.ok) throw new Error('Could not read PDF.');
-    const blob = await response.blob();
-    if (blob.size > 10 * 1024 * 1024) throw new Error('PDF must be 10 MB or smaller.');
-    body.append('file', blob, 'statement.pdf');
-  } else {
-    const { File } = await import('expo-file-system');
-    const file = new File(uri);
-    if (!file.exists || file.size > 10 * 1024 * 1024) throw new Error('Choose a PDF up to 10 MB.');
-    body.append('file', file);
-    send = (await import('expo/fetch')).fetch as typeof fetch;
-  }
-  const response = await apiFetch(`${getApiBaseUrl()}/receipts/statement`, { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body }, 60_000, send);
-  const data = await response.json();
-  if (!response.ok) throw new Error(data.message || 'PDF could not be read.');
-  return data.text;
+export async function readStatementPdf(_uri: string): Promise<string> {
+  throw new Error('Server PDF processing is disabled. Import a CSV or JSON file locally.');
 }

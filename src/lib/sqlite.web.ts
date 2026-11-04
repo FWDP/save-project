@@ -46,3 +46,10 @@ export function acknowledgeTransaction(id: string, userId: string) {
     ),
   );
 }
+
+export function clearAllFinancialData() {
+  const local = storage();
+  for (const key of Object.keys(local)) {
+    if (key.startsWith(cachePrefix) || key.startsWith(queuePrefix)) local.removeItem(key);
+  }
+}

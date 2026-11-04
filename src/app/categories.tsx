@@ -68,7 +68,7 @@ function CategoriesScreen() {
       setCategories(next);
       setOpen(false);
     } catch {
-      setMessage('The categories API is unavailable.');
+      setMessage('Could not save categories on this device.');
     }
   };
   const remove = (category: ApiCategory) =>
@@ -91,7 +91,7 @@ function CategoriesScreen() {
               } catch {
                 Alert.alert(
                   'Could not delete category',
-                  'The categories API is unavailable.',
+                  'Could not save categories on this device.',
                 );
               }
             })(),

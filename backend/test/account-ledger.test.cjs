@@ -34,12 +34,13 @@ test('account responses preserve receipt metadata and mutation keys used for off
  assert.equal(result.clientMutationId,'offline-key');assert.equal(result.receiptUri,'file:///receipt.jpg');assert.deepEqual(result.customFields,{tax:'5'});
 });
 
-test('HTTP account ledger enforces authentication and isolates two accounts without memberships', async () => {
+test('HTTP ledger blocks old clients before financial records reach the database', async () => {
  const {Module,ValidationPipe}=require('@nestjs/common');
  const {NestFactory}=require('@nestjs/core');
  const {AuthGuard}=require('../dist/auth/auth.guard');
  const {ExchangeRatesService}=require('../dist/ledger/exchange-rates.service');
- const database={query:async(sql,params)=>({rows:[{...row(params[0]),user_id:params[0],amount:params[0]==='alice'?10:20}]})};
+ let databaseCalls=0;
+ const database={query:async()=>{databaseCalls++;throw new Error('Unexpected database access');}};
  class TestModule {}
  Module({controllers:[LedgerController],providers:[{provide:TransactionsService,useValue:new TransactionsService(database)},{provide:ExchangeRatesService,useValue:{}}]})(TestModule);
  const app=await NestFactory.create(TestModule,{logger:false});
@@ -52,14 +53,14 @@ test('HTTP account ledger enforces authentication and isolates two accounts with
    ? new Response(JSON.stringify({id:options.headers.Authorization.slice(7)}),{status:200}) : originalFetch(url,options);
  try {
   await app.listen(0,'127.0.0.1'); const base=await app.getUrl();
-  assert.equal((await fetch(base+'/ledger/transactions')).status,401);
+  assert.equal((await fetch(base+'/ledger/transactions')).status,410);
   for(const account of ['alice','bob']) {
    const response=await fetch(base+'/ledger/transactions',{headers:{Authorization:'Bearer '+account}});
-   assert.equal(response.status,200);const data=await response.json();
-   assert.equal(data.total,1);assert.equal(data.items[0].userId,account);
-   assert.equal(data.summary.expenseMinor,account==='alice'?1000:2000);
+   assert.equal(response.status,410);
+   assert.match((await response.json()).message,/stored only on your device/);
   }
-  assert.equal((await fetch(base+'/ledger/transactions?userId=bob',{headers:{Authorization:'Bearer alice'}})).status,400);
+  assert.equal((await fetch(base+'/ledger/transactions?userId=bob',{headers:{Authorization:'Bearer alice'}})).status,410);
+  assert.equal(databaseCalls,0);
   assert.equal((await fetch(base+'/workspaces',{headers:{Authorization:'Bearer alice'}})).status,404);
  } finally {
   global.fetch=originalFetch;

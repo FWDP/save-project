@@ -227,7 +227,7 @@ export function SaveDashboard({
           value={formatMoney(allExpenses.total)}
           accent={palette.text}
           icon="↘"
-          note={`All dates · ${allExpenses.count} records${allExpenses.pending ? ` · ${allExpenses.pending} awaiting upload` : ''}${allExpenses.rejected ? ' · rejected excluded' : ''}`}
+          note={`All dates · ${allExpenses.count} records${allExpenses.rejected ? ' · rejected excluded' : ''}`}
         />
         <MetricCard
           label="Monthly net balance"

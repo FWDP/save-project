@@ -28,15 +28,6 @@ function TransactionDetail() {
   });
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
-  if (item?.syncState === 'pending')
-    return (
-      <FinancePage title="Awaiting upload" subtitle="Saved on this device">
-        <Text style={styles.emptyText}>
-          This transaction will upload when a connection is available. Pull to
-          refresh to retry before editing.
-        </Text>
-      </FinancePage>
-    );
   if (!item)
     return (
       <FinancePage title="Transaction" subtitle="This record is unavailable">
@@ -138,7 +129,7 @@ function TransactionDetail() {
         ))}
       </View>
       {item.receiptUri &&
-        /^(file:|content:|https:|blob:)/.test(item.receiptUri) && (
+        /^(file:|content:|data:image\/|blob:)/.test(item.receiptUri) && (
           <View style={styles.card}>
             <Text style={styles.cardTitle}>Receipt on this device</Text>
             {/\.pdf(?:\?|$)/i.test(item.receiptUri) ? (

@@ -49,11 +49,11 @@ export function FinancePage({
           {showSync && (
             <Text style={[styles.sync, syncError && styles.syncError]}>
               {isLoading
-                ? 'Syncing live data…'
+                ? 'Loading device data…'
                 : (syncError ??
                   (updatedLabel
                     ? `Updated ${updatedLabel}`
-                    : 'Waiting for first sync'))}
+                    : 'Stored on this device'))}
             </Text>
           )}
           {showSync && syncError ? (
@@ -62,7 +62,7 @@ export function FinancePage({
               onPress={refresh}
               style={{ paddingVertical: 12 }}
             >
-              <Text style={{ color: '#75b6ff' }}>Retry sync</Text>
+              <Text style={{ color: '#75b6ff' }}>Reload device data</Text>
             </Pressable>
           ) : null}
         </View>

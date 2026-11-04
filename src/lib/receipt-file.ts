@@ -3,7 +3,20 @@ import { File, Paths, Directory } from 'expo-file-system';
 import { randomUUID } from 'expo-crypto';
 import { Platform } from 'react-native';
 export async function persistReceipt(uri: string, mimeType?: string) {
-  if (Platform.OS === 'web') return uri;
+  if (Platform.OS === 'web') {
+    if (uri.startsWith('data:image/')) return uri;
+    if (!uri.startsWith('blob:')) throw new Error('Choose a local receipt photo.');
+    const response = await fetch(uri);
+    if (!response.ok) throw new Error('Could not read receipt photo.');
+    const blob = await response.blob();
+    return new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result));
+      reader.onerror = () => reject(new Error('Could not store receipt photo.'));
+      reader.readAsDataURL(blob);
+    });
+  }
+  if (!/^(file:|content:)/.test(uri)) throw new Error('Choose a local receipt photo.');
   const folder = new Directory(Paths.document, 'receipts');
   folder.create({ idempotent: true, intermediates: true });
   // Bound decoded image memory while retaining enough detail for small receipt text.
@@ -28,6 +41,7 @@ export async function persistReceipt(uri: string, mimeType?: string) {
 }
 
 export async function readReceiptAsBase64(uri: string): Promise<string> {
+  if (!/^(file:|content:|blob:|data:image\/)/.test(uri)) throw new Error('Receipt is not local.');
   if (Platform.OS === 'web') {
     const res = await fetch(uri);
     const blob = await res.blob();

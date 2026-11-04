@@ -1,0 +1,13 @@
+# Local financial storage
+
+Transactions, budgets, categories and personal savings goals are stored per signed-in account on the device. Mobile uses AsyncStorage; the Next.js application uses browser localStorage. Native receipt photos are copied into the app's documents/receipts directory. Browser receipt photos are stored as image data in the local financial snapshot so they survive reloads without depending on temporary object URLs.
+
+Financial records and photos are not synchronized or persisted by our API. Photos are sent to the external OCR/AI service for processing, and extracted details are returned to the device. Authentication and account administration still use the server. The API returns HTTP 410 for financial persistence and Stellar routes, including requests from older clients. The authenticated receipt scan endpoint remains available for transient external AI processing and does not access the financial database. Server PDF statement processing, currency conversion and blockchain operations are unavailable. Review extracted receipt details or enter them manually, import CSV/JSON on mobile, and export reports locally.
+
+On first use, mobile imports only the current account's existing device cache and pending transactions. Queued transactions become editable local records and are never uploaded. Server-only records and savings goals are not downloaded. Existing server records are not automatically erased; deletion of those records requires a separate database cleanup.
+
+Signing out clears financial data from memory but retains account-isolated device records. Clearing application/browser storage or uninstalling the app can remove records and photos. Web and mobile maintain separate records. Mobile can export JSON records and a separate ZIP of receipt photos; the web Reports page exports CSV or prints to PDF. Browser writes report storage/quota failures without claiming that changes were saved.
+
+## Testing reset — November 4, 2026
+
+The all-account database reset was applied with `node backend/scripts/reset-finances.cjs --apply`, preserving login accounts and user profiles. The one-time device reset `2026-11-04-testing-1` removes every account's local financial snapshots, legacy caches/outboxes, wallet address and native receipt/camera/manipulator files on first use of the updated app. Browser receipt images disappear with their snapshots. Built-in category options remain available. New test records are retained after the reset marker is saved; subsequent launches do not reset them again. Devices must open the updated app to perform their local cleanup. Public blockchain history and files previously exported outside the app are unaffected.

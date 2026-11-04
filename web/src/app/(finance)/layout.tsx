@@ -1,3 +1,4 @@
+import { LocalFinanceProvider } from '@/components/local-finance';
 import Link from "next/link";
 import { requireSession } from "@/lib/supabase";
 import { Brand } from "@/components/icon";
@@ -6,7 +7,7 @@ import { signOut } from "@/app/auth/actions";
 export default async function FinanceLayout({children}: {children: React.ReactNode}) {
   const session = await requireSession();
   const name = String(session.user.user_metadata?.name || session.user.email || 'Your account');
-  return <div className="app-shell">
+  return <LocalFinanceProvider key={session.user.id} owner={session.user.id}><div className="app-shell">
     <a className="skip-link" href="#main-content">Skip to content</a>
     <aside className="sidebar"><Link href="/overview" aria-label="SAVE overview"><Brand /></Link>
       <Navigation />
@@ -19,5 +20,5 @@ export default async function FinanceLayout({children}: {children: React.ReactNo
       <main id="main-content" className="content">{children}</main>
       <footer className="app-footer"><span>SAVE · Make room for what matters.</span><span>Asia/Manila</span></footer>
     </div>
-  </div>;
+  </div></LocalFinanceProvider>;
 }

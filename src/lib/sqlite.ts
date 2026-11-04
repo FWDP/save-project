@@ -221,3 +221,10 @@ export function acknowledgeTransaction(id: string, userId: string) {
     userId,
   ]);
 }
+
+export function clearAllFinancialData() {
+  db.execSync('PRAGMA secure_delete = ON');
+  clearPrivateCache();
+  ensureOutboxTable();
+  db.execSync('DELETE FROM transaction_outbox');
+}

@@ -1,6 +1,7 @@
-import { Text } from '@/components/accessible-text';
 import { scanReceiptWithAi } from '@/lib/api';
 import { receiptDraftFields } from '@/lib/receipt-draft';
+import { useFinanceStore } from '@/store/finance-store';
+import { Text } from '@/components/accessible-text';
 import { persistReceipt } from '@/lib/receipt-file';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { Image } from 'expo-image';
@@ -10,7 +11,6 @@ import { ActivityIndicator, Alert, Linking, Pressable, StyleSheet, View } from '
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useExpenseDraftStore } from '@/store/expense-draft-store';
-import { useFinanceStore } from '@/store/finance-store';
 
 function ReceiptCameraScreen() {
   const router = useRouter();
@@ -48,7 +48,7 @@ function ReceiptCameraScreen() {
       <View style={styles.permission}>
         <Text style={styles.permissionTitle}>Camera access is required</Text>
         <Text style={styles.permissionText}>
-          SAVE uses the camera only when you choose to photograph a receipt.
+          Receipt photos are sent to an external AI service for reading. Saved photos and financial records stay on this device.
         </Text>
         <Pressable
           style={styles.permissionButton}
@@ -124,7 +124,7 @@ function ReceiptCameraScreen() {
             {analyzing ? (
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                 <ActivityIndicator size="small" color="#ffffff" />
-                <Text style={styles.confirmText}>AI Scanning…</Text>
+                <Text style={styles.confirmText}>Reading receipt…</Text>
               </View>
             ) : (
               <Text style={styles.confirmText}>Use Photo</Text>

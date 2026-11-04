@@ -19,8 +19,8 @@ export default function DashboardScreen() {
   const allExpenses = useMemo(() => expenseHistory(transactions, 'PHP'), [transactions]);
   useFocusEffect(useCallback(() => { void refresh(); }, [refresh]));
   const openRecords = () => router.push('/transactions');
-  const syncMessage = loading ? 'Syncing…' : error ?? (lastUpdatedAt
-    ? `Updated ${new Date(lastUpdatedAt).toLocaleTimeString()}` : 'Waiting for first sync');
+  const syncMessage = loading ? 'Loading…' : error ?? (lastUpdatedAt
+    ? `Updated ${new Date(lastUpdatedAt).toLocaleTimeString()}` : 'Stored on this device');
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
@@ -38,7 +38,7 @@ export default function DashboardScreen() {
         refreshControl={<RefreshControl refreshing={loading} onRefresh={refresh} tintColor="#55a6ff" />}>
         <Text accessibilityLiveRegion="polite" style={{ color: '#9ba9bf', padding: 12 }}>{syncMessage}</Text>
         {error ? <View style={{ padding: 16 }}><Text accessibilityRole="alert" style={{ color: '#ff788c' }}>{error}</Text>
-          <Pressable onPress={() => void refresh()} style={{ paddingVertical: 12 }}><Text style={{ color: '#75b6ff' }}>Retry sync</Text></Pressable></View> : null}
+          <Pressable onPress={() => void refresh()} style={{ paddingVertical: 12 }}><Text style={{ color: '#75b6ff' }}>Reload device data</Text></Pressable></View> : null}
         <Text style={{ color: '#f4f7fb', fontWeight: '700', padding: 12 }}>Monthly overview</Text>
         <MonthPicker />
         <SaveDashboard

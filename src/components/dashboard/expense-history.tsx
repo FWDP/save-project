@@ -17,7 +17,7 @@ export function ExpenseHistory({ transactions, currency, onOpen }: {
   return <View style={styles.card}>
     <Text style={styles.title}>Expenses · All dates</Text>
     <Text style={styles.total}>{money(history.total)}</Text>
-    <Text style={styles.meta}>{history.count} expense records · {history.pending} awaiting upload</Text>
+    <Text style={styles.meta}>{history.count} expense records · stored on this device</Text>
     {history.rejected ? <Text style={styles.meta}>{history.rejected} rejected records excluded from the amount total</Text> : null}
     <TextInput accessibilityLabel="Search dashboard expenses" value={search}
       onChangeText={value => { setSearch(value); setLimit(20); }} style={styles.search}
@@ -28,7 +28,7 @@ export function ExpenseHistory({ transactions, currency, onOpen }: {
         <Text style={styles.text}>{item.description}</Text>
         <Text style={styles.meta}>{displayDate(item.date)} · {item.category}{item.merchant ? ` · ${item.merchant}` : ''}</Text>
         {item.tags?.length ? <Text style={styles.meta}>{item.tags.join(', ')}</Text> : null}
-        <Text style={styles.meta}>{item.syncState === 'pending' ? 'Awaiting upload' : item.status ?? 'Recorded'}{item.recurring ? ' · Recurring' : ''}{item.receiptUri ? ' · Receipt attached' : ''}</Text>
+        <Text style={styles.meta}>{item.status ?? 'Recorded'}{item.recurring ? ' · Recurring' : ''}{item.receiptUri ? ' · Receipt attached' : ''}</Text>
       </View>
       <Text style={styles.amount}>{money(item.amount)}</Text>
     </Pressable>)}

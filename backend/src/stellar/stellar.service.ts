@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, Injectable, OnModuleDestroy, OnModuleInit, ServiceUnavailableException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
     Address,
@@ -50,7 +50,7 @@ function jsonSafe(value: unknown): unknown {
 }
 
 @Injectable()
-export class StellarService implements OnModuleInit, OnModuleDestroy {
+export class StellarService {
   private readonly horizonUrl: string;
   private readonly rpcUrl: string;
   private readonly networkPassphrase: string;
@@ -65,9 +65,6 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
   private readonly rpc: rpc.Server;
   private readonly signingRequests = new Map<string, SigningRequest>();
   private readonly linkedAccounts = new Set<string>();
-  private eventCursor?: string;
-  private eventTimer?: NodeJS.Timeout;
-  private readonly eventPollMs: number;
 
   constructor(
     config: ConfigService,
@@ -85,7 +82,6 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
       throw new Error('STELLAR_MAX_SOROBAN_FEE must be a positive integer in stroops');
     }
     this.maxSorobanFee = BigInt(configuredMaxSorobanFee);
-    this.eventPollMs = Math.max(Number(config.get('STELLAR_EVENT_POLL_MS') ?? 15_000), 5_000);
     this.callbackBaseUrl = config.get<string>('STELLAR_CALLBACK_BASE_URL')?.replace(/\/+$/, '');
     this.originDomain = config.get<string>('STELLAR_ORIGIN_DOMAIN')?.trim() || undefined;
     this.integritySigner = loadIntegritySigner(config.get<string>('STELLAR_INTEGRITY_SIGNER_SECRET_FILE'));
@@ -96,23 +92,7 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
     this.rpc = new rpc.Server(this.rpcUrl, { allowHttp: this.rpcUrl.startsWith('http://') });
   }
 
-  onModuleInit() {
-    if (!this.vaultContractId) return;
-    const poll = async () => {
-      try {
-        const page = await this.getVaultEvents(this.eventCursor ? { cursor: this.eventCursor, limit: 100 } : { limit: 100 });
-        this.eventCursor = page.cursor;
-      } catch {
-        // RPC outages are retried on the next interval; no signing or state mutation occurs here.
-      }
-    };
-    void poll();
-    this.eventTimer = setInterval(() => void poll(), this.eventPollMs);
-  }
-
-  onModuleDestroy() {
-    if (this.eventTimer) clearInterval(this.eventTimer);
-  }
+  // Local finance mode does not run background blockchain synchronization.
 
   async networkHealth() {
     try {

@@ -93,6 +93,7 @@ test('receipt scans upload native files as authenticated multipart and surface A
   };
   try {
     const api = load(path.join(root, 'api.ts'), {
+      './local-finance': {},
       './auth': { accessToken: async () => 'test-token' },
       'expo-file-system': { File: ReceiptFile },
       'expo/fetch': { fetch: (...args) => global.fetch(...args) },
@@ -325,4 +326,29 @@ test('receipt ZIP includes readable photos once and reports missing files', asyn
   const entries = require('fflate').unzipSync(archive);
   assert.deepEqual([...entries['2026-10-26-a.jpg']], [255, 216, 255, 217]);
   assert.match(require('fflate').strFromU8(entries['receipts.txt']), /c: receipt unavailable/);
+});
+
+test('browser photo persistence converts temporary object URLs into durable image data', async () => {
+  const originalFetch = global.fetch;
+  const originalReader = global.FileReader;
+  const dataUrl = 'data:image/jpeg;base64,aW1hZ2U=';
+  global.fetch = async uri => {
+    assert.equal(uri, 'blob:local-photo');
+    return { ok: true, blob: async () => new Blob(['image'], { type: 'image/jpeg' }) };
+  };
+  global.FileReader = class {
+    readAsDataURL() { this.result = dataUrl; this.onload(); }
+  };
+  try {
+    const receipt = load(path.join(root, 'receipt-file.ts'), {
+      'expo-file-system': {}, 'expo-image-manipulator': {}, 'expo-crypto': {},
+      'react-native': { Platform: { OS: 'web' } },
+    });
+    const durable = await receipt.persistReceipt('blob:local-photo');
+    assert.equal(durable, dataUrl);
+    const reloaded = JSON.parse(JSON.stringify({ receiptUri: durable }));
+    assert.equal(await receipt.persistReceipt(reloaded.receiptUri), dataUrl);
+    await assert.rejects(receipt.persistReceipt('https://example.com/photo.jpg'), /local receipt/);
+    await assert.rejects(receipt.readReceiptAsBase64('https://example.com/photo.jpg'), /not local/);
+  } finally { global.fetch = originalFetch; global.FileReader = originalReader; }
 });

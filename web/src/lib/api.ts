@@ -13,6 +13,8 @@ export async function api<T>(
   path: string,
   options: RequestInit = {},
 ): Promise<T> {
+  if (/^\/(transactions|budgets|categories|savings-goals|ledger|receipts|stellar)(\/|\?|$)/.test(path))
+    throw new ApiError('Financial records and photos are stored only on your device.', 410);
   const { token } = await requireSession();
   const base = (process.env.SAVE_API_URL || "http://localhost:3000").replace(
     /\/$/,

@@ -7,6 +7,7 @@ export type ParsedReceipt = {
   currency?: string;
   date: string;
   category?: string;
+  tin?: string;
   tax?: number;
   notes?: string;
   confidence?: number;
@@ -37,6 +38,9 @@ export async function scanReceipt(form: FormData): Promise<ScanResult> {
     return { ok: false, error: "No image file was provided." };
   }
 
+  if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || !file.size || file.size > 5 * 1024 * 1024) {
+    return { ok: false, error: 'Choose a non-empty JPEG, PNG or WebP image up to 5 MB.' };
+  }
   relayForm.append("file", file);
 
   // Pass categories if the caller included them

@@ -394,11 +394,11 @@ function SettingsScreen() {
       ) : null}
       <Button
         disabled={busy}
-        label="Delete all synced transactions"
+        label="Delete all local transactions"
         onPress={() =>
           Alert.alert(
-            'Delete all synced transactions?',
-            'Income and expense records will be permanently deleted. Pending uploads, budgets, categories and savings goals are kept.',
+            'Delete all local transactions?',
+            'Income and expense records will be permanently deleted. Budgets, categories and savings goals are kept.',
             [
               { text: 'Cancel' },
               {
@@ -444,7 +444,7 @@ function SettingsScreen() {
         onPress={() =>
           Alert.alert(
             'Sign out?',
-            'Pending uploads stay on this device and resume when you sign into the same account.',
+            'Your financial records and receipt photos stay on this device and are available when you sign into the same account.',
             [
               { text: 'Cancel' },
               { text: 'Sign out', onPress: () => perform(clearAuthUser) },

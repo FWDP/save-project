@@ -127,7 +127,7 @@ function TransactionsScreen() {
               <Text style={styles.meta}>
                 {item.merchant ? `${item.merchant} · ` : ''}
                 {item.category}
-                {item.syncState === 'pending' ? ' · Awaiting upload' : ''}
+
               </Text>
             </View>
             <Text

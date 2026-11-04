@@ -1,154 +1,35 @@
-import { fetchBudgets, fetchCategories, fetchTransactions } from '@/lib/api';
-import {
-    clearPrivateCache,
-    initializeDatabase,
-    loadAccountCache,
-    pendingTransactions,
-    saveAccountCache,
-} from '@/lib/sqlite';
-import { flushTransactions } from '@/lib/transaction-writes';
+import { loadLocalFinances } from '@/lib/local-finance';
 import { useFinanceStore } from '@/store/finance-store';
-import {
-    type PropsWithChildren,
-    createContext,
-    useCallback,
-    useContext,
-    useEffect,
-    useRef,
-} from 'react';
-import { AppState } from 'react-native';
+import { type PropsWithChildren, createContext, useCallback, useContext, useEffect, useRef } from 'react';
 
 const RefreshContext = createContext<() => Promise<void>>(async () => {});
 export const useRefreshFinance = () => useContext(RefreshContext);
-export function FinanceDataProvider({
-  children,
-  userId,
-}: PropsWithChildren<{ userId: string | null }>) {
-  const inFlight = useRef<Promise<void> | null>(null);
-  const active = useRef(true);
+export function FinanceDataProvider({ children, userId }: PropsWithChildren<{ userId: string | null }>) {
+  const activeOwner = useRef(userId);
   const refresh = useCallback(async () => {
     if (!userId) return;
-    if (inFlight.current) return inFlight.current;
-
-    const request = (async () => {
-      useFinanceStore.getState().setLoading(true);
-      try {
-        let uploadFailed = false;
-        try {
-          await flushTransactions(userId);
-        } catch {
-          // A rejected queued write must not block downloading newer records.
-          uploadFailed = true;
-        }
-        if (!active.current) return;
-        const initial = useFinanceStore.getState();
-        // Apply one coherent snapshot; partial results must not mix periods or budgets.
-        const [transactions, budgets, categories] = await Promise.all([
-          fetchTransactions(),
-          fetchBudgets(),
-          fetchCategories(),
-        ]);
-        if (
-          !active.current ||
-          useFinanceStore.getState().transactions !== initial.transactions ||
-          useFinanceStore.getState().budgets !== initial.budgets ||
-          useFinanceStore.getState().categories !== initial.categories
-        )
-          return;
-        const state = useFinanceStore.getState();
-        const pending = pendingTransactions(userId);
-        const uploadedKeys = new Set(transactions.map(row => row.clientMutationId).filter(Boolean));
-        const unconfirmed = pending.filter(row => !row.clientMutationId || !uploadedKeys.has(row.clientMutationId));
-        state.setTransactions([...unconfirmed, ...transactions]);
-        state.setBudgets(budgets);
-        state.setCategories(categories);
-        state.setSyncState(
-          pending.length
-            ? `Latest records downloaded; ${pending.length} transaction(s) awaiting upload confirmation.`
-            : uploadFailed ? 'Latest records downloaded. Upload could not complete; retry sync.' : null,
-          new Date().toISOString(),
-        );
-      } catch {
-        if (active.current) {
-          const state = useFinanceStore.getState();
-          let pending: ReturnType<typeof pendingTransactions> = [];
-          try {
-            pending = pendingTransactions(userId);
-          } catch {
-            pending = state.transactions.filter(
-              (item) => item.syncState === 'pending',
-            );
-          }
-          const current = state.transactions.filter(
-            (item) => item.syncState !== 'pending',
-          );
-          state.setTransactions([...pending, ...current]);
-          state.setSyncState(
-            pending.length
-              ? `${pending.length} transaction(s) saved on this device, awaiting upload. Retry when connected.`
-              : 'Could not sync. Showing your last loaded data.',
-            state.lastUpdatedAt,
-          );
-        }
-      } finally {
-        if (active.current) useFinanceStore.getState().setLoading(false);
-      }
-    })();
-    inFlight.current = request;
+    useFinanceStore.getState().setLoading(true);
     try {
-      await request;
+      const data = await loadLocalFinances(userId);
+      if (activeOwner.current !== userId) return;
+      const state = useFinanceStore.getState();
+      state.setTransactions(data.transactions);
+      state.setBudgets(data.budgets);
+      state.setCategories(data.categories);
+      state.setSyncState(null, new Date().toISOString());
+    } catch {
+      if (activeOwner.current === userId)
+        useFinanceStore.getState().setSyncState('Could not read storage on this device. Please retry.');
     } finally {
-      if (inFlight.current === request) inFlight.current = null;
+      if (activeOwner.current === userId) useFinanceStore.getState().setLoading(false);
     }
   }, [userId]);
   useEffect(() => {
-    active.current = true;
-    try {
-      initializeDatabase();
-      if (!userId) clearPrivateCache();
-      else {
-        const cached = loadAccountCache(userId);
-        if (cached) {
-          const state = useFinanceStore.getState();
-          state.setTransactions(cached.transactions);
-          state.setBudgets(cached.budgets);
-          state.setCategories(cached.categories);
-        }
-      }
-    } catch {
-      /* An unavailable cache must not prevent a network refresh. */
-    }
-    let cacheTimer: ReturnType<typeof setTimeout> | undefined;
-    const writeCache = () => {
-      if (!userId || !active.current) return;
-      const state = useFinanceStore.getState();
-      try {
-        saveAccountCache(userId, { transactions: state.transactions, budgets: state.budgets, categories: state.categories });
-      } catch { /* Cache is optional; pending writes are durable in the outbox. */ }
-    };
-    const unsubscribe = useFinanceStore.subscribe((state, previous) => {
-      if (state.transactions === previous.transactions && state.budgets === previous.budgets && state.categories === previous.categories) return;
-      clearTimeout(cacheTimer);
-      cacheTimer = setTimeout(writeCache, 400);
-    });
+    activeOwner.current = userId;
+    useFinanceStore.getState().reset();
     void refresh();
-    const interval = setInterval(() => {
-      if (AppState.currentState === 'active') void refresh();
-    }, 30_000);
-    const listener = AppState.addEventListener('change', (state) => {
-      if (state === 'active') void refresh();
-    });
-    return () => {
-      clearTimeout(cacheTimer);
-      active.current = false;
-      unsubscribe();
-      clearInterval(interval);
-      listener.remove();
-    };
+    // Signing out clears memory only. Device records remain isolated by account.
+    return () => { activeOwner.current = null; };
   }, [refresh, userId]);
-  return (
-    <RefreshContext.Provider value={refresh}>
-      {children}
-    </RefreshContext.Provider>
-  );
+  return <RefreshContext.Provider value={refresh}>{children}</RefreshContext.Provider>;
 }

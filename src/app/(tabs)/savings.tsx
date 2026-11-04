@@ -40,7 +40,7 @@ function SavingsScreen() {
       setGoals(items);
       setMessage(null);
     } catch {
-      if (isMounted.current) setMessage('Savings API unavailable.');
+      if (isMounted.current) setMessage('Could not read savings goals on this device.');
     } finally {
       if (isMounted.current) setLoading(false);
       refreshInProgress.current = false;

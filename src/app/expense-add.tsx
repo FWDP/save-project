@@ -1,9 +1,9 @@
+import { scanReceiptWithAi } from '@/lib/api';
+import { receiptDraftFields } from '@/lib/receipt-draft';
 import { Text, TextInput } from '@/components/accessible-text';
 import { DateField } from '@/components/date-field';
 import { useRefreshFinance } from '@/components/providers/finance-data-provider';
-import { scanReceiptWithAi } from '@/lib/api';
 import { validDate } from '@/lib/finance';
-import { receiptDraftFields } from '@/lib/receipt-draft';
 import { persistReceipt } from '@/lib/receipt-file';
 import { File } from 'expo-file-system';
 import { useRouter } from 'expo-router';
@@ -36,7 +36,7 @@ function AddExpenseScreen() {
     mimeType = 'image/jpeg',
   ) => {
     setAnalyzing(true);
-    setAiStatus('✨ Gemini AI is analyzing your receipt…');
+    setAiStatus('Sending photo for AI reading. Your saved photo and record stay on this device.');
     try {
       const parsed = await scanReceiptWithAi(localUri, mimeType, availableCategories.map(c => c.name));
       if (useExpenseDraftStore.getState().draft.receiptUri !== localUri) return;
@@ -148,7 +148,7 @@ function AddExpenseScreen() {
       </View>
       <View>
         <Text style={styles.label}>
-          Receipt <Text style={styles.muted}>(AI Smart Scan powered by Gemini)</Text>
+          Receipt <Text style={styles.muted}>(AI reading; photo stored on this device)</Text>
         </Text>
         <View style={styles.receiptRow}>
           <Pressable
@@ -162,7 +162,7 @@ function AddExpenseScreen() {
           </Pressable>
           <Pressable disabled={analyzing} style={styles.receiptButton} onPress={upload}>
             <Text style={styles.receiptIcon}>⇧</Text>
-            <Text style={styles.receiptTitle}>Upload File</Text>
+            <Text style={styles.receiptTitle}>Attach File</Text>
             <Text style={styles.receiptMeta}>JPEG, PNG, WebP</Text>
           </Pressable>
         </View>
@@ -257,7 +257,7 @@ function AddExpenseScreen() {
         onChangeText={(merchant) => patchDraft({ merchant })}
         placeholder="e.g. Jollibee, SM Mall, Lazada…"
       />
-      {draft.receiptUri && !draft.tin.trim() && !analyzing ? <Text style={styles.help}>Merchant TIN was not read. Check the VAT/NON-VAT registration line on the receipt, enter it below, or retry the scan.</Text> : null}
+      {draft.receiptUri && !draft.tin.trim() && !analyzing ? <Text style={styles.help}>Enter the merchant TIN from the VAT/NON-VAT registration line on your receipt.</Text> : null}
       <Field
         label="Merchant or source TIN (optional)"
         help={draft.receiptUri ? 'Check each digit against the merchant registration line. Faint print can be misread; do not use the POS provider TIN.' : undefined}
@@ -277,15 +277,9 @@ function AddExpenseScreen() {
         </View>
       ) : null}
       <View>
-        {draft.receiptUri && !analyzing && (!aiStatus?.startsWith('✓') || !draft.tin.trim()) ? (
-          <Pressable disabled={saving} style={styles.dashedButton}
-            onPress={() => void processReceiptWithAi(draft.receiptUri!, draft.receiptMimeType)}>
-            <Text style={styles.dashedText}>Retry receipt scan</Text>
-          </Pressable>
-        ) : null}
         {draft.receiptUri && !aiStatus?.startsWith('✓') ? (
           <Text numberOfLines={1} style={styles.attachment}>
-            ✓ Receipt attached: {draft.receiptUri.split('/').pop()}
+            ✓ Receipt photo attached on this device
           </Text>
         ) : null}
       </View>

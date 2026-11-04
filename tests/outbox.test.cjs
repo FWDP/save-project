@@ -1,94 +1,98 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const load = require('./load-typescript.cjs');
-function fixture(send) {
-  let owner = 'alice';
-  let sequence = 0;
-  const queued = new Map();
-  const state = {
-    transactions: [],
-    setTransactions(rows) {
-      this.transactions = rows;
-    },
+function fixture() {
+  let owner = 'alice', sequence = 0, fail = false;
+  const disk = new Map();
+  const legacy = { transactions: [{ id: 'old', userId: 'alice', type: 'expense', amount: 5, date: '2026-11-01', category: 'Food', description: 'Old' }], budgets: [], categories: [] };
+  const pending = [{ ...legacy.transactions[0], id: 'queued', syncState: 'pending', receiptUri: 'file:///documents/receipts/photo.jpg' }];
+  const storage = {
+    getItem: async key => disk.get(key) ?? null,
+    setItem: async (key, value) => { if (fail) throw new Error('disk full'); disk.set(key, value); },
   };
-  const writes = load('src/lib/transaction-writes.ts', {
-    '@/store/finance-store': { useFinanceStore: { getState: () => state } },
-    'expo-crypto': { randomUUID: () => `mutation-${++sequence}` },
-    './auth': { getAuthUser: async () => (owner ? { id: owner } : null) },
-    './api': { createTransaction: send },
-    './sqlite': {
-      enqueueTransaction: (user, row) => queued.set(row.id, row),
-      pendingTransactions: (user) =>
-        [...queued.values()].filter((row) => row.userId === user),
-      acknowledgeTransaction: (id, user) => {
-        if (queued.get(id)?.userId === user) queued.delete(id);
-      },
-    },
-  });
-  return {
-    ...writes,
-    queued,
-    state,
-    switchAccount: (id) => {
-      owner = id;
-      state.transactions = [];
-    },
+  const overrides = {
+    './finance-reset': { resetDeviceFinancesOnce: async () => {} },
+    '@react-native-async-storage/async-storage': storage,
+    'expo-crypto': { randomUUID: () => `uuid-${++sequence}` },
+    './auth': { getAuthUser: async () => owner ? { id: owner } : null },
+    './sqlite': { initializeDatabase() {}, loadAccountCache: id => id === 'alice' ? legacy : null, pendingTransactions: id => id === 'alice' ? pending : [] },
   };
+  const local = load('src/lib/local-finance.ts', overrides);
+  return { ...local, disk, overrides, storage, switchAccount: id => owner = id, failWrites: value => fail = value };
 }
-const row = {
-  userId: 'alice',
-  date: '2026-09-01',
-  amount: 10.5,
-  type: 'expense',
-  category: 'Food',
-  description: 'Lunch',
-};
-test('interrupted response keeps a durable pending row and retry preserves mutation identity', async () => {
-  let first = true;
-  const server = new Map();
-  const f = fixture(async (payload) => {
-    if (!server.has(payload.clientMutationId))
-      server.set(payload.clientMutationId, { ...payload, id: 'server-1' });
-    if (first) {
-      first = false;
-      throw new Error('response lost');
-    }
-    return server.get(payload.clientMutationId);
-  });
-  await f.saveTransactionDraft(row);
-  await assert.rejects(f.flushTransactions('alice'));
-  assert.equal(f.queued.size, 1);
-  await f.flushTransactions('alice');
-  assert.equal(server.size, 1);
-  assert.equal(f.queued.size, 0);
-  assert.equal(f.state.transactions[0].id, 'server-1');
+const row = { userId: 'alice', type: 'expense', amount: 10.5, date: '2026-11-04', category: 'Food', description: 'Lunch' };
+test('device migration retains cached and queued receipts without pending upload state', async () => {
+  const f = fixture();
+  const data = await f.loadLocalFinances('alice');
+  assert.deepEqual(data.transactions.map(row => row.id), ['old', 'queued']);
+  assert.equal(data.transactions[1].receiptUri, 'file:///documents/receipts/photo.jpg');
+  assert.equal(data.transactions[1].syncState, undefined);
+  assert.ok(data.categories.length > 0);
+  await f.deleteLocal('transactions', 'queued');
+  assert.equal((await f.loadLocalFinances('alice')).transactions.some(row => row.id === 'queued'), false);
 });
-test('account change during upload never populates the new account state', async () => {
-  let f;
-  f = fixture(async (payload) => {
-    f.switchAccount('bob');
-    return { ...payload, id: 'alice-server-record' };
-  });
-  await f.saveTransactionDraft(row);
-  await f.flushTransactions('alice');
-  assert.deepEqual(f.state.transactions, []);
+test('concurrent local writes persist across reload, update and delete without lost rows', async () => {
+  const f = fixture();
+  const created = await Promise.all(Array.from({ length: 12 }, () => f.addLocal('transactions', row)));
+  assert.equal((await f.localRecords('transactions')).length, 14);
+  await f.updateLocal('transactions', created[0].id, { amount: 14.25 });
+  const reloaded = load('src/lib/local-finance.ts', f.overrides);
+  assert.equal((await reloaded.localRecords('transactions')).find(row => row.id === created[0].id).amount, 14.25);
+  await reloaded.deleteLocal('transactions', created[0].id);
+  assert.equal((await reloaded.localRecords('transactions')).length, 13);
 });
-test('invalid currency precision is rejected before persisting a pending write', async () => {
-  const f = fixture(async () => {
-    throw new Error('should not send');
-  });
-  await assert.rejects(f.saveTransactionDraft({ ...row, amount: 1.234 }));
-  assert.equal(f.queued.size, 0);
+test('accounts remain isolated, and signing out does not delete durable records', async () => {
+  const f = fixture();
+  await f.addLocal('transactions', row);
+  f.switchAccount('bob');
+  assert.deepEqual(await f.localRecords('transactions'), []);
+  await assert.rejects(f.updateLocal('transactions', 'old', { amount: 1 }), /not found/);
+  f.switchAccount(null);
+  await assert.rejects(f.localRecords('transactions'), /Sign in/);
+  f.switchAccount('alice');
+  assert.equal((await f.localRecords('transactions')).length, 3);
 });
-test('partial upload failure preserves acknowledged transactions and remaining queue', async () => {
-  let count = 0;
-  const f = fixture(async (payload) => {
-    if (++count === 2) throw new Error('offline');
-    return { ...payload, id: 'first' };
-  });
-  await f.saveTransactionDraft(row);
-  await f.saveTransactionDraft({ ...row, description: 'Dinner' });
-  await assert.rejects(f.flushTransactions('alice'));
-  assert.equal(f.queued.size, 1);
-  assert.equal(f.state.transactions.length, 1);
+test('storage failures reject writes and do not report saved records', async () => {
+  const f = fixture();
+  await f.loadLocalFinances('alice');
+  f.failWrites(true);
+  await assert.rejects(f.addLocal('transactions', row), /disk full/);
+  f.failWrites(false);
+  assert.equal((await f.localRecords('transactions')).length, 2);
+});
+test('imports remain idempotent and reject invalid money before persistence', async () => {
+  const f = fixture();
+  const a = await f.addLocal('transactions', { ...row, clientMutationId: 'import-1' });
+  const b = await f.addLocal('transactions', { ...row, clientMutationId: 'import-1' });
+  assert.equal(a.id, b.id);
+  await assert.rejects(f.addLocal('transactions', { ...row, amount: 1.001 }), /positive amount/);
+});
+test('financial persistence and disabled PDF and blockchain paths never call the network', async () => {
+  const f = fixture();
+  const original = global.fetch;
+  global.fetch = () => { throw new Error('Unexpected financial network request'); };
+  try {
+    const api = load('src/lib/api.ts', {
+      './local-finance': f,
+      './auth': { accessToken: () => { throw new Error('Unexpected auth request'); } },
+      'expo-constants': { default: {} },
+      'react-native': { Platform: { OS: 'web' } },
+    });
+    const transaction = await api.createTransaction(row);
+    assert.equal((await api.fetchTransactions()).length, 3);
+    await api.updateTransaction(transaction.id, { description: 'Updated locally' });
+    await api.deleteTransaction(transaction.id);
+    const budget = await api.createBudget({ userId: 'alice', category: 'Food', limit: 100, period: 'monthly' });
+    assert.equal((await api.fetchBudgets())[0].id, budget.id);
+    await api.updateBudget(budget.id, { limit: 200 });
+    const category = await api.createCategory({ name: 'Custom', type: 'expense', color: '#ffffff' });
+    await api.updateCategory(category.id, { name: 'Edited' });
+    const goal = await api.createSavingsGoal({ name: 'Trip', targetAmount: 1000 });
+    await api.updateSavingsGoal(goal.id, { fundedAmount: 100 });
+    assert.equal((await api.fetchSavingsGoal(goal.id)).fundedAmount, 100);
+    await api.deleteSavingsGoal(goal.id);
+    await assert.rejects(api.scanReceiptWithAi('file:///receipt.pdf', 'application/pdf'), /Convert PDFs/);
+    await assert.rejects(api.readStatementPdf('file:///statement.pdf'), /disabled/);
+    await assert.rejects(api.prepareStellarPayment({}), /disabled/);
+  } finally { global.fetch = original; }
 });

@@ -2,7 +2,8 @@ import type { NextConfig } from "next";
 import path from "node:path";
 const config: NextConfig = {
   poweredByHeader: false,
-  turbopack: { root: path.resolve(__dirname) },
+  experimental: { serverActions: { bodySizeLimit: "6mb" } },
+  turbopack: { root: path.resolve(__dirname, "..") },
   async headers() {
     return [
       {

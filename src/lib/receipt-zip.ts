@@ -14,7 +14,8 @@ export async function exportReceiptZip(transactions: ApiTransaction[]) {
     seen.add(uri);
     let bytes: Uint8Array;
     try {
-      if (Platform.OS === 'web' || /^https?:/.test(uri)) {
+      if (!/^(file:|content:|blob:|data:image\/)/.test(uri)) throw new Error('Receipt is not local.');
+      if (Platform.OS === 'web') {
         const response = await fetch(uri);
         if (!response.ok) throw new Error('Unavailable');
         bytes = new Uint8Array(await response.arrayBuffer());
