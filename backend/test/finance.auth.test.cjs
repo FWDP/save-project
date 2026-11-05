@@ -27,6 +27,7 @@ test('private finance routes are disabled before accessing authentication or dat
     });
   await assert.rejects(new AuthGuard().canActivate(context('/users')), { status: 401 });
   await assert.rejects(new AuthGuard().canActivate(context('/receipts/scan')), { status: 401 });
+  await assert.rejects(new AuthGuard().canActivate(context('/finance-sync')), { status: 401 });
   assert.equal(await new AuthGuard().canActivate(context('/health')), true);
 });
 test('identity comes from verified provider response, never caller body', async () => {
@@ -51,6 +52,7 @@ test('identity comes from verified provider response, never caller body', async 
         true,
       );
       assert.equal(authContext.getStore().userId, 'verified-owner');
+      assert.equal(await new AuthGuard().canActivate(context('/finance-sync', 'Bearer test')), true);
       assert.equal(await new AuthGuard().canActivate(context('/receipts/scan', 'Bearer test')), true);
     });
   } finally {

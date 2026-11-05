@@ -1,7 +1,8 @@
 import { resetDeviceFinancesOnce } from './finance-reset';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { randomUUID } from 'expo-crypto';
-import { getAuthUser } from './auth';
+import { getAuthUser, accessToken } from './auth';
+import { exchangeFinances, restoreSnapshot, syncSettingsKey, type SyncSettings, type ConflictChoice, type RemoteSnapshot } from '../../shared/finance-sync';
 import type { ApiBudget, ApiCategory, ApiSavingsGoal, ApiTransaction } from './api';
 import { BUILTIN_CATEGORIES } from '../../shared/category-catalog';
 import { validDate, validMoney } from './finance';
@@ -135,5 +136,66 @@ export async function deleteLocal(key: keyof LocalFinances, id: string) {
                 data.categories.push(builtIn);
         }
         return { deleted: true };
+    });
+}
+
+export async function getDatabaseSyncSettings() {
+    const owner = await financeOwner();
+    return serial(async () => {
+        await read(owner);
+        const raw = await AsyncStorage.getItem(syncSettingsKey(owner));
+        return raw ? JSON.parse(raw) as SyncSettings : { enabled: false };
+    });
+}
+export async function setDatabaseSyncEnabled(enabled: boolean) {
+    const owner = await financeOwner();
+    return serial(async () => {
+        await read(owner);
+        const raw = await AsyncStorage.getItem(syncSettingsKey(owner));
+        const settings: SyncSettings = { ...(raw ? JSON.parse(raw) : {}), enabled };
+        if (await financeOwner() !== owner) throw new Error('Account changed.');
+        await AsyncStorage.setItem(syncSettingsKey(owner), JSON.stringify(settings));
+        return settings;
+    });
+}
+export async function syncLocalFinances(choice?: ConflictChoice) {
+    const owner = await financeOwner();
+    return serial(async () => {
+        const local = await read(owner);
+        const key = syncSettingsKey(owner);
+        const raw = await AsyncStorage.getItem(key);
+        const settings: SyncSettings = raw ? JSON.parse(raw) : { enabled: false };
+        const assertActive = async () => {
+            if (await financeOwner() !== owner) throw new Error('Account changed. Your device records were not replaced.');
+            const current = await AsyncStorage.getItem(key);
+            if (!current || !JSON.parse(current).enabled) throw new Error('Database sync is off.');
+        };
+        const request = async (method: 'GET' | 'PUT', payload?: RemoteSnapshot & { consent: true }) => {
+            const { getApiBaseUrl } = await import('./api');
+            const token = await accessToken(owner);
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(), 30_000);
+            try {
+                const response = await fetch(`${getApiBaseUrl()}/finance-sync`, {
+                    method,
+                    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                    body: payload ? JSON.stringify(payload) : undefined,
+                    signal: controller.signal,
+                });
+                if (response.status === 409) return null;
+                if (!response.ok) throw new Error(`Database sync failed (HTTP ${response.status}). Your local records are still saved.`);
+                return await response.json() as RemoteSnapshot;
+            } finally { clearTimeout(timer); }
+        };
+        const result = await exchangeFinances({ local, settings, assertActive,
+            fetchRemote: async () => { const remote = await request('GET'); if (!remote) throw new Error('Could not load database records.'); return remote; },
+            pushRemote: payload => request('PUT', payload),
+        }, choice);
+        if (!result) return settings;
+        await assertActive();
+        const merged = restoreSnapshot<LocalFinances>(result.snapshot, local, owner, BUILTIN_CATEGORIES);
+        await AsyncStorage.setItem(prefix + owner, JSON.stringify(merged));
+        await AsyncStorage.setItem(key, JSON.stringify(result.settings));
+        return result.settings;
     });
 }

@@ -1,3 +1,4 @@
+import { DatabaseSyncSettings } from '@/components/database-sync-settings';
 import { readStatementPdf } from '@/lib/api';
 import { statementRows } from '@/lib/statement-import';
 import { exportReceiptZip } from '@/lib/receipt-zip';
@@ -263,6 +264,7 @@ function SettingsScreen() {
     });
   return (
     <FinancePage title="Settings" subtitle="Account and financial records">
+      <DatabaseSyncSettings />
       <View style={styles.card}>
         <Text style={styles.cardTitle}>Account</Text>
         <Text style={styles.rowTitle}>{user?.name}</Text>

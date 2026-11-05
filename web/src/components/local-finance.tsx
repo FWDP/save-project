@@ -2,6 +2,8 @@
 import { createContext, useContext, useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
+import { readDatabaseFinances, writeDatabaseFinances } from '@/app/finance-sync-actions';
+import { exchangeFinances, restoreSnapshot, syncSettingsKey, FinanceSyncConflict, type SyncSettings, type ConflictChoice } from '../../../shared/finance-sync';
 import { scanReceipt } from '@/app/receipts/actions';
 import { resetBrowserFinances } from '../../../shared/finance-reset';
 import { BUILTIN_CATEGORIES } from '../../../shared/category-catalog';
@@ -29,6 +31,12 @@ const Context = createContext<{
     error: string;
     save: (next: Snapshot) => boolean;
     owner: string;
+    syncSettings: SyncSettings;
+    syncBusy: boolean;
+    syncMessage: string;
+    syncConflict: boolean;
+    configureSync: (enabled: boolean) => boolean;
+    synchronize: (choice?: ConflictChoice) => Promise<void>;
 } | null>(null);
 const money = (amount: number) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(amount);
 const today = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Manila', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
@@ -39,9 +47,16 @@ export function LocalFinanceProvider({ owner, children }: {
     const [data, setData] = useState<Snapshot>(empty);
     const [ready, setReady] = useState(false);
     const [error, setError] = useState('');
+    const [syncSettings, setSyncSettings] = useState<SyncSettings>({ enabled: false });
+    const [syncBusy, setSyncBusy] = useState(false);
+    const [syncMessage, setSyncMessage] = useState('');
+    const [syncConflict, setSyncConflict] = useState(false);
+    const syncing = useRef(false);
+    const active = useRef(false);
     const key = `save-local-finances:v1:${owner}`;
     const storedSnapshot = useRef<string | null>(null);
     useEffect(() => {
+        active.current = true;
         const read = () => {
             try {
                 resetBrowserFinances(localStorage);
@@ -50,6 +65,7 @@ export function LocalFinanceProvider({ owner, children }: {
                 if (!['transactions', 'budgets', 'categories', 'goals'].every(key => Array.isArray(snapshot[key as keyof Snapshot])))
                     throw new Error('Invalid device snapshot');
                 storedSnapshot.current = raw;
+                setSyncSettings(JSON.parse(localStorage.getItem(syncSettingsKey(owner)) ?? '{"enabled":false}'));
                 setData(snapshot);
                 setError('');
                 setReady(true);
@@ -60,11 +76,11 @@ export function LocalFinanceProvider({ owner, children }: {
             }
         };
         read();
-        const listener = (event: StorageEvent) => { if (event.key === key || event.key === null)
+        const listener = (event: StorageEvent) => { if (event.key === key || event.key === syncSettingsKey(owner) || event.key === null)
             read(); };
         window.addEventListener('storage', listener);
-        return () => window.removeEventListener('storage', listener);
-    }, [key]);
+        return () => { active.current = false; window.removeEventListener('storage', listener); };
+    }, [key, owner]);
     const save = (next: Snapshot) => {
         try {
             if (!ready)
@@ -85,7 +101,55 @@ export function LocalFinanceProvider({ owner, children }: {
             return false;
         }
     };
-    return <Context.Provider value={{ data, ready, error, save, owner }}>{children}</Context.Provider>;
+    const configureSync = (enabled: boolean) => {
+        try {
+            if (!ready) throw new Error('Device storage unavailable.');
+            const current: SyncSettings = JSON.parse(localStorage.getItem(syncSettingsKey(owner)) ?? '{"enabled":false}');
+            const next = { ...current, enabled };
+            localStorage.setItem(syncSettingsKey(owner), JSON.stringify(next));
+            setSyncSettings(next); setSyncConflict(false);
+            setSyncMessage(enabled ? 'Sync enabled. Use Sync now to exchange changes.' : 'Sync is off on this device. Existing database copies remain stored.');
+            return true;
+        } catch { setSyncMessage('Could not save sync preference. Please check browser storage.'); return false; }
+    };
+    const synchronize = async (choice?: ConflictChoice) => {
+        if (!ready || syncing.current) return;
+        syncing.current = true; setSyncBusy(true); setSyncConflict(false); setSyncMessage('');
+        try {
+            const raw = localStorage.getItem(key);
+            const local: Snapshot = raw ? JSON.parse(raw) : empty();
+            const settings: SyncSettings = JSON.parse(localStorage.getItem(syncSettingsKey(owner)) ?? '{"enabled":false}');
+            const assertActive = async () => {
+                if (!active.current) throw new Error('Account changed. Reload before syncing.');
+                const current: SyncSettings = JSON.parse(localStorage.getItem(syncSettingsKey(owner)) ?? '{"enabled":false}');
+                if (!current.enabled) throw new Error('Database sync is off.');
+                if (localStorage.getItem(key) !== raw) throw new Error('Records changed on this device during sync. Your latest changes are saved locally; sync again.');
+            };
+            const result = await exchangeFinances({ local, settings, assertActive,
+                fetchRemote: () => readDatabaseFinances(owner),
+                pushRemote: payload => writeDatabaseFinances(owner, payload),
+            }, choice);
+            if (!result) { setSyncMessage('Database sync is off.'); return; }
+            await assertActive();
+            const merged = restoreSnapshot<Snapshot>(result.snapshot, local, owner, BUILTIN_CATEGORIES);
+            const next = JSON.stringify(merged);
+            localStorage.setItem(key, next);
+            storedSnapshot.current = next;
+            setData(merged);
+            localStorage.setItem(syncSettingsKey(owner), JSON.stringify(result.settings));
+            setSyncSettings(result.settings);
+            setSyncMessage('Uploaded and downloaded financial records. Receipt photos stayed on this device.');
+        } catch (error) {
+            if (active.current) {
+                setSyncConflict(error instanceof FinanceSyncConflict);
+                setSyncMessage(error instanceof Error ? error.message : 'Sync failed. Your local records remain saved.');
+            }
+        } finally {
+            syncing.current = false;
+            if (active.current) setSyncBusy(false);
+        }
+    };
+    return <Context.Provider value={{ data, ready, error, save, owner, syncSettings, syncBusy, syncMessage, syncConflict, configureSync, synchronize }}>{children}</Context.Provider>;
 }
 function useLocal() { const value = useContext(Context); if (!value)
     throw new Error('Local finance provider is required.'); return value; }
@@ -101,7 +165,7 @@ export function LocalFinance({ view, id }: {
     view: 'overview' | 'transactions' | 'transaction' | 'budgets' | 'categories' | 'savings' | 'reports';
     id?: string;
 }) {
-    const { data, ready, error, save, owner } = useLocal();
+    const { data, ready, error, save, owner, syncSettings } = useLocal();
     const [month, setMonth] = useState(() => today().slice(0, 7));
     const [search, setSearch] = useState('');
     const [editing, setEditing] = useState<string | null>(null);
@@ -137,7 +201,7 @@ export function LocalFinance({ view, id }: {
         const recordId = editing ?? (view === 'transaction' && id !== 'new' ? id : undefined) ?? `local_${crypto.randomUUID()}`;
         let next = data;
         if (view === 'transaction' || view === 'transactions') {
-            const row: Transaction = { id: recordId, type: text('type') as Transaction['type'], amount, date: text('date'), category: text('category'), description: text('description'), merchant: text('merchant'), receiptUri: photo ?? item?.receiptUri };
+            const row: Transaction = { ...item, id: recordId, type: text('type') as Transaction['type'], amount, date: text('date'), category: text('category'), description: text('description'), merchant: text('merchant'), receiptUri: photo ?? item?.receiptUri };
             next = { ...data, transactions: [row, ...data.transactions.filter(row => row.id !== recordId)] };
         }
         else if (view === 'budgets') {
@@ -145,7 +209,7 @@ export function LocalFinance({ view, id }: {
             next = { ...data, budgets: [row, ...data.budgets.filter(row => row.id !== recordId)] };
         }
         else if (view === 'categories') {
-            const row: ApiCategory = { id: recordId, name: text('name'), type: text('type') as 'expense' | 'income', color: text('color') };
+            const row: ApiCategory = { ...category, id: recordId, name: text('name'), type: text('type') as 'expense' | 'income', color: text('color') };
             next = { ...data, categories: [row, ...data.categories.filter(row => row.id !== recordId)] };
         }
         else if (view === 'savings') {
@@ -154,7 +218,7 @@ export function LocalFinance({ view, id }: {
                 setMessage('Enter a valid saved amount.');
                 return;
             }
-            const row: ApiSavingsGoal = { id: recordId, name: text('name'), targetAmount: amount, fundedAmount, asset: 'PHP', targetDate: text('targetDate') || undefined, status: fundedAmount >= amount ? 'completed' : 'draft' };
+            const row: ApiSavingsGoal = { ...goal, id: recordId, name: text('name'), targetAmount: amount, fundedAmount, asset: 'PHP', targetDate: text('targetDate') || undefined, status: fundedAmount >= amount ? 'completed' : 'draft' };
             next = { ...data, goals: [row, ...data.goals.filter(row => row.id !== recordId)] };
         }
         if (save(next)) {
@@ -198,7 +262,7 @@ export function LocalFinance({ view, id }: {
     };
     const title = { overview: 'Your overview', transactions: 'Transactions', transaction: id === 'new' ? 'Add transaction' : 'Transaction details', budgets: 'Budgets', categories: 'Categories', savings: 'Savings goals', reports: 'Reports' }[view];
     return <>
-    <div className="page-heading"><div><h1>{title}</h1><p>Financial records and receipt photos stay in this browser on this device.</p></div></div>
+    <div className="page-heading"><div><h1>{title}</h1><p>{syncSettings.enabled ? 'Database sync is enabled. Use Sync now in Account Settings to exchange financial records. Photos stay on this device.' : 'Financial records and receipt photos stay in this browser on this device.'}</p></div></div>
     {error && <p role="alert">{error}</p>}{message && <p role="status">{message}</p>}
     {!ready ? <p>{error ? 'Device storage unavailable.' : 'Loading device records…'}</p> : <>
       {['overview', 'transactions', 'reports', 'budgets'].includes(view) && <section className="panel"><label>Month <input type="month" value={month} onChange={event => setMonth(event.target.value)}/></label></section>}
@@ -234,4 +298,21 @@ export function LocalFinance({ view, id }: {
       {view === 'savings' && <section className="panel">{data.goals.length ? data.goals.map(row => <article className="panel" key={row.id}><h3>{row.name}</h3><p>{money(row.fundedAmount)} of {money(row.targetAmount)} · {row.status}</p><button onClick={() => setEditing(row.id)}>Edit</button> <button onClick={() => remove('goals', row.id)}>Delete</button></article>) : <p>No savings goals on this device yet.</p>}</section>}
     </>}
   </>;
+}
+
+export function DatabaseSyncSettings() {
+    const { ready, syncSettings, syncBusy, syncMessage, syncConflict, configureSync, synchronize } = useLocal();
+    const toggle = (enabled: boolean) => {
+        if (enabled && !window.confirm('Enable database sync? Financial records will be uploaded to your account database and downloaded to this browser. Photos stay local. After enabling, use Sync now for later changes. Turning this off does not delete existing database copies.')) return;
+        if (configureSync(enabled) && enabled) void synchronize();
+    };
+    return <section className="panel settings-panel">
+      <h2>Optional database sync</h2>
+      <p>Off by default. Sync now uploads and downloads transactions, budgets, categories and savings goals. Receipt photos stay on this device. Changes remain local until you sync.</p>
+      <label><input type="checkbox" checked={syncSettings.enabled} disabled={!ready || syncBusy} onChange={event => toggle(event.target.checked)} /> Enable database sync on this browser</label>
+      {syncSettings.enabled && <button className="button primary" disabled={!ready || syncBusy} onClick={() => void synchronize()}>{syncBusy ? 'Syncing…' : 'Sync now'}</button>}
+      {syncSettings.lastSyncedAt && <p>Last successful sync: {new Date(syncSettings.lastSyncedAt).toLocaleString()}</p>}
+      {syncMessage && <p role="status">{syncMessage}</p>}
+      {syncConflict && <><p>Choose which side to keep for conflicting edits or deletions. Other records will be merged.</p><button disabled={syncBusy} onClick={() => void synchronize('device')}>Keep device versions for conflicts</button> <button disabled={syncBusy} onClick={() => void synchronize('database')}>Keep database versions for conflicts</button></>}
+    </section>;
 }

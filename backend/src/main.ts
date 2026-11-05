@@ -2,13 +2,15 @@ import type { Request, Response, NextFunction } from 'express';
 import { authContext } from './auth/auth-context';
 import { AuthGuard } from './auth/auth.guard';
 import { ValidationPipe } from '@nestjs/common';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 
 import { AppModule } from './app.module';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  app.useBodyParser('json', { limit: '5mb' });
 
   app.use((_req: Request, _res: Response, next: NextFunction) =>
     authContext.run({}, next),

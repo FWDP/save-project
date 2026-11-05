@@ -6,7 +6,7 @@ const { parseEnv } = require('node:util');
 const { Client } = require('pg');
 const root = path.resolve(__dirname, '../..');
 const config = Object.assign({}, ...['.env', 'backend/.env'].map(file => path.join(root, file)).filter(fs.existsSync).map(file => parseEnv(fs.readFileSync(file, 'utf8'))), process.env);
-const tables = ['transactions', 'workspace_transactions', 'budgets', 'categories', 'savings_goals', 'stellar_signing_requests', 'stellar_contract_events', 'stellar_accounts'];
+const tables = ['finance_sync_snapshots', 'transactions', 'workspace_transactions', 'budgets', 'categories', 'savings_goals', 'stellar_signing_requests', 'stellar_contract_events', 'stellar_accounts'];
 const quarantineCollections = ['transactions', 'categories', 'budgets', 'savingsgoals', 'savings_goals', 'savingsGoals', 'stellaraccounts', 'stellar_accounts', 'stellarsigningrequests', 'stellar_signing_requests', 'stellarcontractevents', 'stellar_contract_events', 'workspacetransactions', 'workspace_transactions'];
 (async () => {
   const client = new Client({ connectionString: config.SUPABASE_DB_URL, ssl: { rejectUnauthorized: false }, connectionTimeoutMillis: 8000 });

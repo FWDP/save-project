@@ -1,3 +1,4 @@
+import { FinanceSyncModule } from './finance-sync/finance-sync.module';
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { LedgerModule } from './ledger/ledger.module';
@@ -19,6 +20,7 @@ import { UsersModule } from './users/users.module';
       envFilePath: ['.env', '../.env'],
     }),
     DatabaseModule,
+    FinanceSyncModule,
     LedgerModule,
     UsersModule,
     TransactionsModule,

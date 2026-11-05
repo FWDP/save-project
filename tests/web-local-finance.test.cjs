@@ -5,7 +5,7 @@ const ts = require('typescript');
 const load = require('./load-typescript.cjs');
 const { FINANCE_RESET_KEY, FINANCE_RESET_VERSION } = load('shared/finance-reset.ts');
 
-function fixture(owner, disk = new Map()) {
+function fixture(owner, disk = new Map(), actions) {
   const hooks = [];
   let cursor = 0;
   const listeners = [];
@@ -40,6 +40,8 @@ function fixture(owner, disk = new Map()) {
     if (name === 'react') return react;
     if (name === 'react/jsx-runtime') return { jsx, jsxs: jsx };
     if (name.startsWith('next/')) return {};
+    if (name === '@/app/finance-sync-actions') return actions ?? { readDatabaseFinances: () => { throw new Error('Unexpected sync request'); }, writeDatabaseFinances: () => { throw new Error('Unexpected sync request'); } };
+    if (name.endsWith('shared/finance-sync')) return load('shared/finance-sync.ts');
     if (name === '@/app/receipts/actions') return { scanReceipt: () => { throw new Error('Unexpected scan'); } };
     if (name.endsWith('shared/finance-reset')) return load('shared/finance-reset.ts');
     if (name.endsWith('shared/category-catalog')) return load('shared/category-catalog.ts');
@@ -72,4 +74,36 @@ test('web refuses stale overwrites from another tab and damaged snapshots', () =
   const broken = fixture('alice', new Map([[FINANCE_RESET_KEY, FINANCE_RESET_VERSION], ['save-local-finances:v1:alice', '{broken']]));
   assert.equal(broken.render().ready, false);
   assert.equal(broken.render().save(empty), false);
+});
+
+test('browser sync stays off by default and explicitly uploads/downloads after opt-in', async () => {
+  let calls = 0;
+  const remote = { revision: 1, snapshot: { ...empty, transactions: [{ id: 'remote', amount: 20 }] } };
+  const f = fixture('alice', new Map(), {
+    readDatabaseFinances: async owner => { assert.equal(owner, 'alice'); calls++; return remote; },
+    writeDatabaseFinances: async (owner, payload) => { assert.equal(owner, 'alice'); assert.equal(payload.consent, true); calls++; assert.ok(!JSON.stringify(payload).includes('receiptUri')); return { revision: 2, snapshot: payload.snapshot }; },
+  });
+  f.render().save({ ...empty, transactions: [{ id: 'local', receiptUri: 'data:image/jpeg;base64,private' }] });
+  await f.render().synchronize();
+  assert.equal(calls, 0);
+  assert.equal(f.render().configureSync(true), true);
+  await f.render().synchronize();
+  assert.equal(calls, 2);
+  assert.equal(f.render().data.transactions.length, 2);
+  assert.equal(f.render().data.transactions.find(row => row.id === 'local').receiptUri, 'data:image/jpeg;base64,private');
+  assert.ok(f.render().syncSettings.lastSyncedAt);
+  f.render().configureSync(false);
+  await f.render().synchronize();
+  assert.equal(calls, 2);
+});
+test('browser edits during a sync are preserved rather than overwritten by a response', async () => {
+  let f;
+  f = fixture('alice', new Map(), {
+    readDatabaseFinances: async () => { f.render().save({ ...empty, transactions: [{ id: 'new-edit' }] }); return { revision: 1, snapshot: empty }; },
+    writeDatabaseFinances: async () => { throw new Error('Must not upload a stale snapshot'); },
+  });
+  f.render().configureSync(true);
+  await f.render().synchronize();
+  assert.deepEqual(f.render().data.transactions.map(row => row.id), ['new-edit']);
+  assert.match(f.render().syncMessage, /Records changed/);
 });

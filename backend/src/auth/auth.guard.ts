@@ -17,7 +17,7 @@ export class AuthGuard implements CanActivate {
     if (/^\/(ledger|transactions|budgets|categories|savings-goals|receipts|stellar)(\/|$)/.test(path) && path !== '/receipts/scan')
       throw new GoneException('Financial records and photos are stored only on your device. Server finance and blockchain operations are disabled.');
     // Account administration still uses authenticated server access.
-    if (!/^\/(users|workspaces)(\/|$)/.test(path) && path !== '/receipts/scan') return true;
+    if (!/^\/(users|workspaces|finance-sync)(\/|$)/.test(path) && path !== '/receipts/scan') return true;
     const authorization = request.headers.authorization;
     if (
       typeof authorization !== 'string' ||

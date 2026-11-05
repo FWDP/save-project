@@ -9,7 +9,7 @@ function storage(values) {
 test('browser reset clears every account and old queues, retains sign-in, and runs once', () => {
   const local = storage([
     ['save-local-finances:v1:alice', 'private'], ['save-local-finances:v1:bob', 'private'],
-    ['save-account-cache:alice', 'private'], ['save-outbox:bob', 'private'],
+    ['save-finance-sync:v1:alice', 'private'], ['save-account-cache:alice', 'private'], ['save-outbox:bob', 'private'],
     ['@save-local-finances:v1:charlie', 'private'], ['save.stellar.testnet.account', 'address'],
     ['sb-auth-token', 'keep'], ['preferences', 'keep'],
   ]);

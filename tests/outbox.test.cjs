@@ -14,7 +14,8 @@ function fixture() {
     './finance-reset': { resetDeviceFinancesOnce: async () => {} },
     '@react-native-async-storage/async-storage': storage,
     'expo-crypto': { randomUUID: () => `uuid-${++sequence}` },
-    './auth': { getAuthUser: async () => owner ? { id: owner } : null },
+    './auth': { getAuthUser: async () => owner ? { id: owner } : null, accessToken: async expected => { if (owner !== expected) throw new Error('Account changed'); return 'test-token'; } },
+    './api': { getApiBaseUrl: () => 'https://sync.example.test' },
     './sqlite': { initializeDatabase() {}, loadAccountCache: id => id === 'alice' ? legacy : null, pendingTransactions: id => id === 'alice' ? pending : [] },
   };
   const local = load('src/lib/local-finance.ts', overrides);
@@ -94,5 +95,59 @@ test('financial persistence and disabled PDF and blockchain paths never call the
     await assert.rejects(api.scanReceiptWithAi('file:///receipt.pdf', 'application/pdf'), /Convert PDFs/);
     await assert.rejects(api.readStatementPdf('file:///statement.pdf'), /disabled/);
     await assert.rejects(api.prepareStellarPayment({}), /disabled/);
+  } finally { global.fetch = original; }
+});
+
+test('mobile opt-in exchanges snapshots, retains photos, and turning off stops requests', async () => {
+  const f = fixture();
+  const original = global.fetch;
+  let requests = 0;
+  let remote = { revision: 0, snapshot: { transactions: [{ ...row, id: 'remote' }], categories: [], budgets: [], goals: [] } };
+  delete remote.snapshot.transactions[0].userId;
+  global.fetch = async (url, options) => {
+    requests++;
+    assert.equal(url, 'https://sync.example.test/finance-sync');
+    if (options.method === 'PUT') {
+      const body = JSON.parse(options.body);
+      assert.equal(body.consent, true);
+      assert.ok(!options.body.includes('receiptUri'));
+      remote = { revision: remote.revision + 1, snapshot: body.snapshot };
+    }
+    return { ok: true, status: 200, json: async () => remote };
+  };
+  try {
+    assert.equal((await f.getDatabaseSyncSettings()).enabled, false);
+    await f.syncLocalFinances();
+    assert.equal(requests, 0);
+    await f.setDatabaseSyncEnabled(true);
+    await f.syncLocalFinances();
+    const records = await f.localRecords('transactions');
+    assert.equal(records.length, 3);
+    assert.equal(records.find(row => row.id === 'queued').receiptUri, 'file:///documents/receipts/photo.jpg');
+    assert.equal((await f.getDatabaseSyncSettings()).enabled, true);
+    assert.ok((await f.getDatabaseSyncSettings()).lastSyncedAt);
+    const before = requests;
+    await f.setDatabaseSyncEnabled(false);
+    await f.syncLocalFinances();
+    assert.equal(requests, before);
+    f.switchAccount('bob');
+    assert.equal((await f.getDatabaseSyncSettings()).enabled, false);
+  } finally { global.fetch = original; }
+});
+test('mobile sync failures and sign-out during requests preserve device records and success timestamp', async () => {
+  const f = fixture();
+  const original = global.fetch;
+  await f.setDatabaseSyncEnabled(true);
+  const before = await f.localRecords('transactions');
+  try {
+    global.fetch = async () => { throw new Error('offline'); };
+    await assert.rejects(f.syncLocalFinances(), /offline/);
+    assert.deepEqual(await f.localRecords('transactions'), before);
+    assert.equal((await f.getDatabaseSyncSettings()).lastSyncedAt, undefined);
+    global.fetch = async () => { f.switchAccount('bob'); return { ok: true, status: 200, json: async () => ({ revision: 1, snapshot: { transactions: [], categories: [], budgets: [], goals: [] } }) }; };
+    await assert.rejects(f.syncLocalFinances(), /Account changed/);
+    assert.deepEqual(await f.localRecords('transactions'), []);
+    f.switchAccount('alice');
+    assert.deepEqual(await f.localRecords('transactions'), before);
   } finally { global.fetch = original; }
 });

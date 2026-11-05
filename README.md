@@ -8,7 +8,7 @@
 
 ### Personal finance and goal-based saving
 
-> **Launch update — November 4, 2026:** financial records and photos are stored locally; receipt reading uses an external AI service. Database finance sync and application blockchain operations are disabled. Historical Stellar features and screenshots below document earlier alpha work. See the [project handbook](docs/SAVE.md) for the current architecture, OCR privacy findings, setup and qualification.
+> **Launch update — November 4, 2026:** financial records and photos are stored locally; receipt reading uses an external AI service. Database sync is optional and off by default; application blockchain operations remain disabled. Historical Stellar features and screenshots below document earlier alpha work. See the [project handbook](docs/SAVE.md) for the current architecture, OCR privacy findings, setup and qualification.
 
 ### Historical Stellar alpha overview
 
@@ -146,7 +146,7 @@ These are public Testnet identifiers, not credentials. Deployments may be replac
 
 ## Current implementation update
 
-The launch app uses account-isolated local financial records, receipt attachments, external OCR and reviewed import/export flows. Authentication remains server-backed. New records do not synchronize between Web and Mobile.
+The launch app uses account-isolated local financial records, receipt attachments, external OCR and reviewed import/export flows. Authentication remains server-backed. Enable optional database sync in Settings and use Sync now to exchange records across opted-in devices. Photos stay local.
 
 See the consolidated [S.A.V.E. Project Handbook](docs/SAVE.md) for setup, storage/reset behavior, receipt processing, provider privacy findings, verification, and historical migration/contract evidence.
 
